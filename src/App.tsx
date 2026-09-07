@@ -9,6 +9,7 @@ import { LyricsModal } from './components/LyricsModal';
 import { QueueDrawer } from './components/QueueDrawer';
 import { SettingsModal } from './components/SettingsModal';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
+import { AddToPlaylistModal } from './components/AddToPlaylistModal';
 import { Track, Playlist, RepeatMode, UserSettings } from './types';
 import { INITIAL_TRACKS, INITIAL_PLAYLISTS, CATEGORIES } from './data/musicData';
 import { youtubePlayer, searchYouTubeMusic } from './services/youtubeService';
@@ -87,6 +88,7 @@ export const App: React.FC = () => {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCreatePlaylistOpen, setIsCreatePlaylistOpen] = useState(false);
+  const [trackToAddToPlaylist, setTrackToAddToPlaylist] = useState<Track | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGeneratingSmartPlaylist, setIsGeneratingSmartPlaylist] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -478,14 +480,60 @@ export const App: React.FC = () => {
       name,
       description: description || 'Created by you',
       coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-      tracks: [INITIAL_TRACKS[0], INITIAL_TRACKS[1]],
-      owner: 'User',
+      tracks: [],
+      owner: 'You',
       isCustom: true,
       likesCount: 1,
     };
     setPlaylists((prev) => [...prev, newPlaylist]);
     setActivePlaylistId(newPlaylist.id);
     setCurrentView('playlist');
+    showToast(`Created playlist "${name}"`);
+  };
+
+  const handleAddTrackToPlaylist = (playlistId: string, track: Track) => {
+    setPlaylists((prev) =>
+      prev.map((pl) => {
+        if (pl.id !== playlistId) return pl;
+        const alreadyExists = pl.tracks.some(
+          (t) => t.id === track.id || (t.youtubeVideoId && t.youtubeVideoId === track.youtubeVideoId)
+        );
+        if (alreadyExists) return pl;
+        return {
+          ...pl,
+          tracks: [...pl.tracks, track],
+        };
+      })
+    );
+    const targetPl = playlists.find((p) => p.id === playlistId);
+    showToast(`Added "${track.title}" to ${targetPl?.name || 'playlist'}`);
+  };
+
+  const handleCreateAndAdd = (playlistName: string, track: Track) => {
+    const newPlaylist: Playlist = {
+      id: `custom-pl-${Date.now()}`,
+      name: playlistName,
+      description: 'Created by you',
+      coverUrl: track.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+      tracks: [track],
+      owner: 'You',
+      isCustom: true,
+      likesCount: 1,
+    };
+    setPlaylists((prev) => [...prev, newPlaylist]);
+    setActivePlaylistId(newPlaylist.id);
+    setCurrentView('playlist');
+    showToast(`Created "${playlistName}" and added "${track.title}"`);
+  };
+
+  const handleDeleteCustomPlaylist = (playlistId: string) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+    if (activePlaylistId === playlistId) {
+      setActivePlaylistId(null);
+      setCurrentView('library');
+    }
+    showToast(`Deleted playlist "${pl?.name || ''}"`);
   };
 
   // Greeting helper
@@ -815,6 +863,7 @@ export const App: React.FC = () => {
                     onSelectTrack={(t) => handleSelectTrack(t, searchResults)}
                     onTogglePlay={handleTogglePlay}
                     onToggleLike={handleToggleLike}
+                    onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
                   />
                 </div>
               ) : (
@@ -871,20 +920,34 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Bar (Big Green Play Button) */}
-              <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-6">
-                <button
-                  id="btn-play-playlist-hero"
-                  onClick={() => {
-                    if (currentPlaylist.tracks.length > 0) {
-                      handleSelectTrack(currentPlaylist.tracks[0], currentPlaylist.tracks);
-                    }
-                  }}
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
-                  title="Play playlist"
-                >
-                  <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-black ml-0.5" />
-                </button>
+              {/* Action Bar (Big Green Play Button & Custom Playlist Actions) */}
+              <div className="p-4 sm:p-6 flex items-center justify-between gap-4 sm:gap-6">
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <button
+                    id="btn-play-playlist-hero"
+                    onClick={() => {
+                      if (currentPlaylist.tracks.length > 0) {
+                        handleSelectTrack(currentPlaylist.tracks[0], currentPlaylist.tracks);
+                      }
+                    }}
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
+                    title="Play playlist"
+                  >
+                    <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-black ml-0.5" />
+                  </button>
+                </div>
+
+                {currentPlaylist.isCustom && (
+                  <button
+                    id="btn-delete-playlist"
+                    onClick={() => handleDeleteCustomPlaylist(currentPlaylist.id)}
+                    className="flex items-center gap-1.5 text-xs text-[#a7a7a7] hover:text-red-400 px-3 py-1.5 rounded-full border border-white/10 hover:border-red-400/40 transition-colors"
+                    title="Delete playlist"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span className="hidden sm:inline">Delete Playlist</span>
+                  </button>
+                )}
               </div>
 
               {/* Track Table */}
@@ -897,6 +960,7 @@ export const App: React.FC = () => {
                   onSelectTrack={(t) => handleSelectTrack(t, currentPlaylist.tracks)}
                   onTogglePlay={handleTogglePlay}
                   onToggleLike={handleToggleLike}
+                  onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
                 />
               </div>
             </div>
@@ -948,6 +1012,7 @@ export const App: React.FC = () => {
                     onSelectTrack={(t) => handleSelectTrack(t, likedTracks)}
                     onTogglePlay={handleTogglePlay}
                     onToggleLike={handleToggleLike}
+                    onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
                   />
                 )}
               </div>
@@ -1093,6 +1158,7 @@ export const App: React.FC = () => {
                     onSelectTrack={(t) => handleSelectTrack(t, history)}
                     onTogglePlay={handleTogglePlay}
                     onToggleLike={handleToggleLike}
+                    onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
                   />
                 )}
               </div>
@@ -1175,6 +1241,16 @@ export const App: React.FC = () => {
         isOpen={isCreatePlaylistOpen}
         onClose={() => setIsCreatePlaylistOpen(false)}
         onCreate={handleCreatePlaylist}
+      />
+
+      {/* Add Track to Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={!!trackToAddToPlaylist}
+        onClose={() => setTrackToAddToPlaylist(null)}
+        track={trackToAddToPlaylist}
+        playlists={playlists}
+        onAddToPlaylist={handleAddTrackToPlaylist}
+        onCreateAndAdd={handleCreateAndAdd}
       />
 
       {/* Toast Alert Notification */}

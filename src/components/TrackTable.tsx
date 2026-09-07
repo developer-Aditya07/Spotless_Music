@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, Heart, Clock, Music } from 'lucide-react';
+import { Play, Pause, Heart, Clock, PlusCircle } from 'lucide-react';
 import { Track } from '../types';
 
 interface TrackTableProps {
@@ -10,6 +10,7 @@ interface TrackTableProps {
   onSelectTrack: (track: Track) => void;
   onTogglePlay: () => void;
   onToggleLike: (track: Track) => void;
+  onAddToPlaylist?: (track: Track) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -26,13 +27,14 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   onSelectTrack,
   onTogglePlay,
   onToggleLike,
+  onAddToPlaylist,
 }) => {
   return (
     <div id="spotify-track-table-container" className="w-full text-sm select-none">
       {/* Table Header (Desktop Only) */}
       <div
         id="track-table-header"
-        className="hidden md:grid grid-cols-[16px_4fr_3fr_2fr_minmax(120px,1fr)] gap-4 px-4 py-2 border-b border-white/10 text-xs text-[#b3b3b3] font-semibold uppercase tracking-wider items-center"
+        className="hidden md:grid grid-cols-[16px_4fr_3fr_2fr_minmax(130px,1fr)] gap-4 px-4 py-2 border-b border-white/10 text-xs text-[#b3b3b3] font-semibold uppercase tracking-wider items-center"
       >
         <span className="text-center">#</span>
         <span>Title</span>
@@ -46,13 +48,13 @@ export const TrackTable: React.FC<TrackTableProps> = ({
       {/* Track Rows */}
       <div id="track-table-rows" className="flex flex-col py-1 md:py-2">
         {tracks.map((track, index) => {
-          const isCurrent = currentTrack?.id === track.id;
+          const isCurrent = currentTrack?.id === track.id || (currentTrack?.youtubeVideoId && currentTrack.youtubeVideoId === track.youtubeVideoId);
           const isLiked = likedTrackIds.includes(track.id);
 
           return (
             <div
               id={`track-row-${track.id}`}
-              key={track.id}
+              key={`${track.id}-${index}`}
               onClick={() => onSelectTrack(track)}
               className={`group rounded-lg transition-colors cursor-pointer select-none ${
                 isCurrent ? 'bg-white/10' : 'hover:bg-white/5 active:bg-white/10'
@@ -99,17 +101,30 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {onAddToPlaylist && (
+                    <button
+                      id={`btn-mobile-add-pl-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToPlaylist(track);
+                      }}
+                      className="p-1.5 text-[#a7a7a7] hover:text-white active:scale-90 transition-transform"
+                      title="Add to playlist"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     id={`btn-mobile-like-${track.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleLike(track);
                     }}
-                    className="p-2 text-[#a7a7a7] active:scale-90 transition-transform"
+                    className="p-1.5 text-[#a7a7a7] active:scale-90 transition-transform"
                     title={isLiked ? 'Remove from Liked' : 'Save to Liked'}
                   >
-                    <Heart className={`w-5 h-5 ${isLiked ? 'text-[#1db954] fill-[#1db954]' : ''}`} />
+                    <Heart className={`w-4 h-4 ${isLiked ? 'text-[#1db954] fill-[#1db954]' : ''}`} />
                   </button>
                   <span className="text-xs text-[#a7a7a7] tabular-nums min-w-[32px] text-right">
                     {formatDuration(track.duration)}
@@ -118,7 +133,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               </div>
 
               {/* DESKTOP ROW (Hidden on mobile, 5-column layout on md+) */}
-              <div className="hidden md:grid grid-cols-[16px_4fr_3fr_2fr_minmax(120px,1fr)] gap-4 px-4 py-2.5 items-center">
+              <div className="hidden md:grid grid-cols-[16px_4fr_3fr_2fr_minmax(130px,1fr)] gap-4 px-4 py-2.5 items-center">
                 {/* Col 1: Index or Play / Equalizer */}
                 <div className="flex items-center justify-center text-[#b3b3b3]">
                   {isCurrent && isPlaying ? (
@@ -195,8 +210,22 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   {track.addedAt || '1 week ago'}
                 </div>
 
-                {/* Col 5: Duration & Like */}
-                <div className="flex items-center justify-end gap-3 text-xs text-[#b3b3b3] pr-4">
+                {/* Col 5: Duration & Like & Add to Playlist */}
+                <div className="flex items-center justify-end gap-2 text-xs text-[#b3b3b3] pr-4">
+                  {onAddToPlaylist && (
+                    <button
+                      id={`btn-add-pl-row-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToPlaylist(track);
+                      }}
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+                      title="Add to playlist"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                    </button>
+                  )}
+
                   <button
                     id={`btn-like-row-${track.id}`}
                     onClick={(e) => {
@@ -212,7 +241,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   >
                     <Heart className={`w-4 h-4 ${isLiked ? 'fill-[#1db954]' : ''}`} />
                   </button>
-                  <span className="tabular-nums">{formatDuration(track.duration)}</span>
+
+                  <span className="tabular-nums min-w-[35px] text-right">{formatDuration(track.duration)}</span>
                 </div>
               </div>
             </div>

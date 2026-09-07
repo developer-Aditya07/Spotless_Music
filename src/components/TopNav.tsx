@@ -1,10 +1,10 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Search, Settings, ShieldCheck, Sparkles, User } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Settings, User, ShieldCheck } from 'lucide-react';
 
 interface TopNavProps {
   currentView: string;
   searchQuery: string;
-  onSearchChange: (q: string) => void;
+  onSearchChange: (query: string) => void;
   onOpenSettings: () => void;
 }
 
@@ -17,7 +17,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   return (
     <header
       id="spotify-top-nav"
-      className="h-14 sm:h-16 px-3 sm:px-6 bg-[#101010]/90 backdrop-blur-md sticky top-0 z-30 flex items-center justify-between gap-2 sm:gap-4 select-none"
+      className="min-h-[56px] sm:min-h-[64px] px-3 sm:px-6 bg-[#101010]/95 backdrop-blur-md sticky top-0 z-30 flex items-center justify-between gap-2 sm:gap-4 select-none pt-[env(safe-area-inset-top,0px)] pb-2"
     >
       {/* Navigation history controls & Mobile Logo */}
       <div id="nav-history-buttons" className="flex items-center gap-2">

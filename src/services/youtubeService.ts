@@ -54,21 +54,55 @@ class YouTubePlayerBridge {
 
   private setupVisibilityHandling() {
     if (typeof document === 'undefined') return;
-    // When app goes to background or returns to foreground
-    document.addEventListener('visibilitychange', () => {
-      // If player was playing when pushed to background, keep/resume playback
-      if (this.player && typeof this.player.getPlayerState === 'function') {
-        try {
-          const state = this.player.getPlayerState();
-          // If was playing or buffering or cued, force play
-          if (state === 1 || state === 3) {
-            this.player.playVideo();
-          }
-        } catch {
-          // ignore
+
+    // 1. Prevent scripts (including YouTube iframe) from detecting when the app is backgrounded
+    try {
+      Object.defineProperty(document, 'hidden', {
+        get: () => false,
+        configurable: true,
+      });
+      Object.defineProperty(document, 'visibilityState', {
+        get: () => 'visible',
+        configurable: true,
+      });
+    } catch {
+      // ignore
+    }
+
+    // 2. Intercept and stop visibilitychange event propagation to iframe
+    window.addEventListener(
+      'visibilitychange',
+      (e) => {
+        // If player was playing, force resume immediately
+        if (this.player && typeof this.player.playVideo === 'function') {
+          setTimeout(() => {
+            try {
+              this.player.playVideo();
+            } catch {
+              // ignore
+            }
+          }, 50);
         }
-      }
-    });
+      },
+      true
+    );
+
+    // 3. Intercept window blur (when switching apps or locking screen)
+    window.addEventListener(
+      'blur',
+      () => {
+        if (this.player && typeof this.player.playVideo === 'function') {
+          setTimeout(() => {
+            try {
+              this.player.playVideo();
+            } catch {
+              // ignore
+            }
+          }, 100);
+        }
+      },
+      true
+    );
   }
 
   private loadIframeAPI() {

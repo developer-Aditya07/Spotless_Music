@@ -3,30 +3,26 @@ import { Track, Playlist, Category } from '../types';
 export const INITIAL_TRACKS: Track[] = [
   {
     id: 'track-1',
-    title: 'Blinding Lights',
-    artist: 'The Weeknd',
-    album: 'After Hours',
-    duration: 200,
+    title: 'Starboy',
+    artist: 'The Weeknd ft. Daft Punk',
+    album: 'Starboy',
+    duration: 230,
     coverUrl: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=500&auto=format&fit=crop&q=80',
-    youtubeVideoId: '4NRXx6U8ABQ',
-    isExplicit: false,
+    youtubeVideoId: '34Na4j8AVgA',
+    isExplicit: true,
     addedAt: '2 days ago',
     lyrics: [
-      { time: 10, text: "Yeah..." },
-      { time: 26, text: "I've been tryna call" },
-      { time: 30, text: "I've been on my own for long enough" },
-      { time: 35, text: "Maybe you can show me how to love, maybe" },
-      { time: 42, text: "I'm going through withdrawals" },
-      { time: 46, text: "You don't even have to do too much" },
-      { time: 50, text: "You can turn me on with just a touch, baby" },
-      { time: 58, text: "I look around and Sin City's cold and empty" },
-      { time: 64, text: "No one's around to judge me" },
-      { time: 67, text: "I can't see clearly when you're gone" },
-      { time: 74, text: "I said, ooh, I'm blinded by the lights" },
-      { time: 82, text: "No, I can't sleep until I feel your touch" },
-      { time: 90, text: "I said, ooh, I'm drowning in the night" },
-      { time: 98, text: "Oh, when I'm like this, you're the one I trust" },
-    ]
+      { time: 10, text: "I'm tryna put you in the worst mood, ah" },
+      { time: 14, text: "P1 cleaner than your church shoes, ah" },
+      { time: 18, text: "Milli point two just to hurt you, ah" },
+      { time: 22, text: "All red Lamb' just to tease you, ah" },
+      { time: 26, text: "None of these toys on lease too, ah" },
+      { time: 30, text: "Made your whole year in a week too, yah" },
+      { time: 35, text: "Main bitch out your league too, ah" },
+      { time: 39, text: "Side bitch out of your league too, ah" },
+      { time: 43, text: "Look what you've done" },
+      { time: 47, text: "I'm a motherfuckin' starboy" },
+    ],
   },
   {
     id: 'track-2',
@@ -51,7 +47,7 @@ export const INITIAL_TRACKS: Track[] = [
       { time: 48, text: "My sugarboo, I'm levitating" },
       { time: 52, text: "The Milky Way, we're renegading" },
       { time: 57, text: "Yeah-yeah-yeah-yeah" },
-    ]
+    ],
   },
   {
     id: 'track-3',
@@ -73,7 +69,7 @@ export const INITIAL_TRACKS: Track[] = [
       { time: 37, text: "In this world, it's just us" },
       { time: 42, text: "You know it's not the same as it was" },
       { time: 46, text: "As it was, as it was" },
-    ]
+    ],
   },
   {
     id: 'track-4',
@@ -92,7 +88,7 @@ export const INITIAL_TRACKS: Track[] = [
       { time: 24, text: "Crash at my place, baby, you're a wreck" },
       { time: 30, text: "Then you're left in the dust, unless I stuck by ya" },
       { time: 35, text: "You're a sunflower, I think your love would be too much" },
-    ]
+    ],
   },
   {
     id: 'track-5',
@@ -114,7 +110,7 @@ export const INITIAL_TRACKS: Track[] = [
       { time: 38, text: "And it's new, the shape of your body" },
       { time: 42, text: "It's blue, the feeling I've got" },
       { time: 46, text: "And it's ooh, whoa-oh, it's a cruel summer" },
-    ]
+    ],
   },
   {
     id: 'track-6',
@@ -171,51 +167,191 @@ export const INITIAL_TRACKS: Track[] = [
     isExplicit: false,
     addedAt: 'Today',
   },
+  {
+    id: 'track-11',
+    title: 'Espresso',
+    artist: 'Sabrina Carpenter',
+    album: 'Short n Sweet',
+    duration: 175,
+    coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'eVli-tstM5E',
+    isExplicit: false,
+    addedAt: 'Yesterday',
+  },
+  {
+    id: 'track-12',
+    title: 'Good 4 U',
+    artist: 'Olivia Rodrigo',
+    album: 'SOUR',
+    duration: 178,
+    coverUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'gNi_6U5Pm_o',
+    isExplicit: true,
+    addedAt: '3 days ago',
+  },
+  {
+    id: 'track-13',
+    title: 'Believer',
+    artist: 'Imagine Dragons',
+    album: 'Evolve',
+    duration: 204,
+    coverUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: '7wtfhZwyrcc',
+    isExplicit: false,
+    addedAt: '4 days ago',
+  },
+  {
+    id: 'track-14',
+    title: 'Bad Guy',
+    artist: 'Billie Eilish',
+    album: 'WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?',
+    duration: 194,
+    coverUrl: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'DyDfgMOUjCI',
+    isExplicit: false,
+    addedAt: '1 week ago',
+  },
+  {
+    id: 'track-15',
+    title: 'Counting Stars',
+    artist: 'OneRepublic',
+    album: 'Native',
+    duration: 257,
+    coverUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'hT_nvWreIhg',
+    isExplicit: false,
+    addedAt: '2 weeks ago',
+  },
+  {
+    id: 'track-16',
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    album: '÷ (Divide)',
+    duration: 233,
+    coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'JGwWNGJdvx8',
+    isExplicit: false,
+    addedAt: '5 days ago',
+  },
+  {
+    id: 'track-17',
+    title: 'HUMBLE.',
+    artist: 'Kendrick Lamar',
+    album: 'DAMN.',
+    duration: 177,
+    coverUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'tvTRZJ-4EyI',
+    isExplicit: true,
+    addedAt: '6 days ago',
+  },
+  {
+    id: 'track-18',
+    title: 'God\'s Plan',
+    artist: 'Drake',
+    album: 'Scorpion',
+    duration: 198,
+    coverUrl: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'xpVfcZ0ZcFM',
+    isExplicit: true,
+    addedAt: '1 week ago',
+  },
+  {
+    id: 'track-19',
+    title: 'Midnight City',
+    artist: 'M83',
+    album: 'Hurry Up, We\'re Dreaming',
+    duration: 243,
+    coverUrl: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'dX3k_QDnzHE',
+    isExplicit: false,
+    addedAt: '3 weeks ago',
+  },
+  {
+    id: 'track-20',
+    title: 'Weightless (Ambient Chill)',
+    artist: 'Marconi Union',
+    album: 'Ambient Transmissions',
+    duration: 280,
+    coverUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=500&auto=format&fit=crop&q=80',
+    youtubeVideoId: 'UfcAVejslrU',
+    isExplicit: false,
+    addedAt: 'Just now',
+  },
 ];
 
 export const INITIAL_PLAYLISTS: Playlist[] = [
   {
     id: 'playlist-top-hits',
     name: "Today's Top Hits",
-    description: "The biggest songs right now on the global charts. Updated daily with no ads.",
+    description: "The biggest global hits right now. Sabrina Carpenter, The Weeknd, Dua Lipa, and Harry Styles.",
     coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-    tracks: [INITIAL_TRACKS[0], INITIAL_TRACKS[1], INITIAL_TRACKS[2], INITIAL_TRACKS[4], INITIAL_TRACKS[6]],
+    tracks: [
+      INITIAL_TRACKS[10], // Espresso
+      INITIAL_TRACKS[0],  // Starboy
+      INITIAL_TRACKS[1],  // Levitating
+      INITIAL_TRACKS[2],  // As It Was
+      INITIAL_TRACKS[4],  // Cruel Summer
+      INITIAL_TRACKS[11], // Good 4 U
+    ],
     owner: 'Spotify',
     likesCount: 34120984,
   },
   {
     id: 'playlist-chill-vibes',
     name: 'Chill Vibes',
-    description: 'Kick back and relax with smooth beats, ambient textures, and mellow vocals.',
+    description: 'Kick back with mellow vocals, smooth indie beats, and relaxed rhythms.',
     coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-    tracks: [INITIAL_TRACKS[2], INITIAL_TRACKS[3], INITIAL_TRACKS[5], INITIAL_TRACKS[9]],
+    tracks: [
+      INITIAL_TRACKS[2],  // As It Was
+      INITIAL_TRACKS[3],  // Sunflower
+      INITIAL_TRACKS[5],  // Heat Waves
+      INITIAL_TRACKS[15], // Shape of You
+      INITIAL_TRACKS[9],  // Lofi
+    ],
     owner: 'Spotify',
     likesCount: 8940122,
   },
   {
     id: 'playlist-rap-caviar',
     name: 'RapCaviar',
-    description: 'New music from Drake, SZA, Kendrick Lamar, 21 Savage and more.',
+    description: 'Heavy hitters and anthems from Kendrick Lamar, Drake, SZA, and Post Malone.',
     coverUrl: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=600&auto=format&fit=crop&q=80',
-    tracks: [INITIAL_TRACKS[3], INITIAL_TRACKS[6]],
+    tracks: [
+      INITIAL_TRACKS[16], // HUMBLE
+      INITIAL_TRACKS[17], // God's Plan
+      INITIAL_TRACKS[6],  // Kill Bill
+      INITIAL_TRACKS[3],  // Sunflower
+      INITIAL_TRACKS[0],  // Starboy
+    ],
     owner: 'Spotify',
     likesCount: 14755100,
   },
   {
     id: 'playlist-all-out-2010s',
     name: 'All Out 2010s',
-    description: 'The biggest anthems and memories of the 2010s decade.',
+    description: 'The definitive anthems and stadium memories that shaped the 2010s decade.',
     coverUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
-    tracks: [INITIAL_TRACKS[7], INITIAL_TRACKS[8], INITIAL_TRACKS[0]],
+    tracks: [
+      INITIAL_TRACKS[7],  // Viva La Vida
+      INITIAL_TRACKS[8],  // Get Lucky
+      INITIAL_TRACKS[14], // Counting Stars
+      INITIAL_TRACKS[12], // Believer
+      INITIAL_TRACKS[18], // Midnight City
+    ],
     owner: 'Spotify',
     likesCount: 5210344,
   },
   {
     id: 'playlist-deep-focus',
     name: 'Deep Focus',
-    description: 'Keep calm and focus with ambient study beats and peaceful instrumentals.',
+    description: 'Calm beats, soothing instrumentals, and lofi rhythms to study or work peacefully.',
     coverUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=600&auto=format&fit=crop&q=80',
-    tracks: [INITIAL_TRACKS[9], INITIAL_TRACKS[5]],
+    tracks: [
+      INITIAL_TRACKS[9],  // Lofi Girl
+      INITIAL_TRACKS[19], // Weightless
+      INITIAL_TRACKS[5],  // Heat Waves
+      INITIAL_TRACKS[7],  // Viva La Vida
+    ],
     owner: 'Spotify',
     likesCount: 4120890,
   },
