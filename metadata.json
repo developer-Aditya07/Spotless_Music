@@ -1,0 +1,6 @@
+{
+  "name": "Spotify Ad-Free",
+  "description": "An exact Spotify clone frontend with ad-free music streaming powered by YouTube Music integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
