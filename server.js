@@ -164,7 +164,10 @@ async function handleYouTubeSearch(query, apiKey) {
 
   // Fast direct YouTube Music search (No API key needed)
   try {
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' audio')}`;
+    // If the query doesn't explicitly specify song/music, optimize search query for music
+    const isExplicitSearch = /song|music|audio|track|lyrics/i.test(query);
+    const searchQuery = isExplicitSearch ? query : `${query} song`;
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
     const res = await fetch(searchUrl, {
       headers: {
         'User-Agent':
@@ -190,6 +193,13 @@ async function handleYouTubeSearch(query, apiKey) {
           const rawTitle = v.title?.runs?.[0]?.text || '';
           const artist = v.ownerText?.runs?.[0]?.text || 'Various Artists';
           const durationStr = v.lengthText?.simpleText || '3:30';
+          const durationSec = parseDurationText(durationStr);
+
+          // Filter out short sound effects or clip tests under 45s unless explicitly requested
+          if (durationSec < 45 && !query.toLowerCase().includes('effect') && !query.toLowerCase().includes('sound')) {
+            continue;
+          }
+
           const thumbnail =
             v.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
             `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
@@ -199,7 +209,7 @@ async function handleYouTubeSearch(query, apiKey) {
             title: cleanTitle(rawTitle),
             artist: artist,
             album: 'YouTube Music Single',
-            duration: parseDurationText(durationStr),
+            duration: durationSec,
             coverUrl: thumbnail,
             youtubeVideoId: v.videoId,
             addedAt: 'Just now',

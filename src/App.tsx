@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { PlayerBar } from './components/PlayerBar';
 import { TrackTable } from './components/TrackTable';
+import { BottomNav } from './components/BottomNav';
 import { LyricsModal } from './components/LyricsModal';
 import { QueueDrawer } from './components/QueueDrawer';
 import { SettingsModal } from './components/SettingsModal';
@@ -138,7 +139,7 @@ export const App: React.FC = () => {
     });
   }, [volume]);
 
-  // Handle Search queries
+  // Handle Search queries with race condition protection
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults(INITIAL_TRACKS);
@@ -146,14 +147,26 @@ export const App: React.FC = () => {
       return;
     }
 
+    let isCurrent = true;
     setIsSearching(true);
     const timer = setTimeout(async () => {
-      const results = await searchYouTubeMusic(searchQuery, settings.youtubeApiKey);
-      setSearchResults(results);
-      setIsSearching(false);
-    }, 300);
+      try {
+        const results = await searchYouTubeMusic(searchQuery, settings.youtubeApiKey);
+        if (isCurrent) {
+          setSearchResults(results);
+          setIsSearching(false);
+        }
+      } catch (err) {
+        if (isCurrent) {
+          setIsSearching(false);
+        }
+      }
+    }, 280);
 
-    return () => clearTimeout(timer);
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
   }, [searchQuery, settings.youtubeApiKey]);
 
   // Player controls
@@ -449,7 +462,7 @@ export const App: React.FC = () => {
         {/* Center Main Scrollable Panel */}
         <main
           id="spotify-main-content"
-          className="flex-1 bg-[#121212] rounded-lg my-2 mr-2 flex flex-col min-w-0 overflow-y-auto relative"
+          className="flex-1 bg-[#121212] md:rounded-lg m-0 md:my-2 md:mr-2 flex flex-col min-w-0 overflow-y-auto relative pb-32 md:pb-8"
         >
           {/* Top Bar */}
           <TopNav
@@ -461,30 +474,30 @@ export const App: React.FC = () => {
 
           {/* VIEW: HOME */}
           {currentView === 'home' && (
-            <div id="view-home" className="p-6 flex flex-col gap-8">
+            <div id="view-home" className="p-3.5 sm:p-6 flex flex-col gap-6 sm:gap-8">
               {/* Header Greeting */}
               <div>
-                <h1 id="home-greeting" className="text-3xl font-extrabold text-white tracking-tight mb-4">
+                <h1 id="home-greeting" className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-3 sm:mb-4">
                   {greeting}
                 </h1>
 
                 {/* 6 Quick Access Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
                   <div
                     id="quick-card-liked"
                     onClick={() => setCurrentView('liked')}
-                    className="group bg-white/5 hover:bg-white/20 transition-all rounded flex items-center gap-4 overflow-hidden cursor-pointer shadow relative"
+                    className="group bg-white/5 hover:bg-white/20 transition-all rounded flex items-center gap-2.5 sm:gap-4 overflow-hidden cursor-pointer shadow relative"
                   >
-                    <div className="w-20 h-20 bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center flex-shrink-0">
-                      <Heart className="w-8 h-8 text-white fill-white" />
+                    <div className="w-12 h-12 sm:w-20 sm:h-20 bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center flex-shrink-0">
+                      <Heart className="w-5 h-5 sm:w-8 sm:h-8 text-white fill-white" />
                     </div>
-                    <span className="font-bold text-white text-sm truncate flex-1">Liked Songs</span>
+                    <span className="font-bold text-white text-xs sm:text-sm truncate flex-1 pr-1">Liked Songs</span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         if (likedTracks.length > 0) handleSelectTrack(likedTracks[0], likedTracks);
                       }}
-                      className="w-11 h-11 rounded-full bg-[#1db954] text-black flex items-center justify-center mr-4 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all shadow-xl"
+                      className="hidden sm:flex w-11 h-11 rounded-full bg-[#1db954] text-black items-center justify-center mr-4 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all shadow-xl"
                     >
                       <Play className="w-5 h-5 fill-black ml-0.5" />
                     </button>
@@ -498,16 +511,16 @@ export const App: React.FC = () => {
                         setActivePlaylistId(pl.id);
                         setCurrentView('playlist');
                       }}
-                      className="group bg-white/5 hover:bg-white/20 transition-all rounded flex items-center gap-4 overflow-hidden cursor-pointer shadow relative"
+                      className="group bg-white/5 hover:bg-white/20 transition-all rounded flex items-center gap-2.5 sm:gap-4 overflow-hidden cursor-pointer shadow relative"
                     >
-                      <img src={pl.coverUrl} alt={pl.name} className="w-20 h-20 object-cover flex-shrink-0" />
-                      <span className="font-bold text-white text-sm truncate flex-1">{pl.name}</span>
+                      <img src={pl.coverUrl} alt={pl.name} className="w-12 h-12 sm:w-20 sm:h-20 object-cover flex-shrink-0" />
+                      <span className="font-bold text-white text-xs sm:text-sm truncate flex-1 pr-1">{pl.name}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           if (pl.tracks.length > 0) handleSelectTrack(pl.tracks[0], pl.tracks);
                         }}
-                        className="w-11 h-11 rounded-full bg-[#1db954] text-black flex items-center justify-center mr-4 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all shadow-xl"
+                        className="hidden sm:flex w-11 h-11 rounded-full bg-[#1db954] text-black items-center justify-center mr-4 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all shadow-xl"
                       >
                         <Play className="w-5 h-5 fill-black ml-0.5" />
                       </button>
@@ -776,19 +789,19 @@ export const App: React.FC = () => {
           {currentView === 'playlist' && (
             <div id="view-playlist" className="flex flex-col">
               {/* Header Hero Banner */}
-              <div className="bg-gradient-to-b from-[#404040] to-[#121212] p-6 pt-12 flex items-end gap-6">
+              <div className="bg-gradient-to-b from-[#404040] to-[#121212] p-4 sm:p-6 pt-6 sm:pt-12 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
                 <img
                   src={currentPlaylist.coverUrl}
                   alt={currentPlaylist.name}
-                  className="w-52 h-52 object-cover rounded shadow-2xl flex-shrink-0"
+                  className="w-36 h-36 sm:w-52 sm:h-52 object-cover rounded-lg shadow-2xl flex-shrink-0"
                 />
-                <div className="flex flex-col gap-2 min-w-0">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white">Playlist</span>
-                  <h1 className="text-4xl lg:text-6xl font-black text-white tracking-tight">
+                <div className="flex flex-col gap-1.5 sm:gap-2 min-w-0">
+                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white/80">Playlist</span>
+                  <h1 className="text-2xl sm:text-4xl lg:text-6xl font-black text-white tracking-tight">
                     {currentPlaylist.name}
                   </h1>
-                  <p className="text-sm text-[#b3b3b3] mt-2 line-clamp-2">{currentPlaylist.description}</p>
-                  <div className="flex items-center gap-2 text-xs font-medium text-white/80 mt-2">
+                  <p className="text-xs sm:text-sm text-[#b3b3b3] mt-1 line-clamp-2">{currentPlaylist.description}</p>
+                  <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-white/80 mt-1 sm:mt-2">
                     <span className="font-bold text-white">{currentPlaylist.owner}</span>
                     <span>•</span>
                     <span>{currentPlaylist.tracks.length} songs</span>
@@ -797,7 +810,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* Action Bar (Big Green Play Button) */}
-              <div className="p-6 flex items-center gap-6">
+              <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-6">
                 <button
                   id="btn-play-playlist-hero"
                   onClick={() => {
@@ -805,15 +818,15 @@ export const App: React.FC = () => {
                       handleSelectTrack(currentPlaylist.tracks[0], currentPlaylist.tracks);
                     }
                   }}
-                  className="w-14 h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
                   title="Play playlist"
                 >
-                  <Play className="w-6 h-6 fill-black ml-0.5" />
+                  <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-black ml-0.5" />
                 </button>
               </div>
 
               {/* Track Table */}
-              <div className="px-6 pb-12">
+              <div className="px-2 sm:px-6 pb-12">
                 <TrackTable
                   tracks={currentPlaylist.tracks}
                   currentTrack={currentTrack}
@@ -830,14 +843,14 @@ export const App: React.FC = () => {
           {/* VIEW: LIKED SONGS */}
           {currentView === 'liked' && (
             <div id="view-liked" className="flex flex-col">
-              <div className="bg-gradient-to-b from-[#450af5] to-[#121212] p-6 pt-12 flex items-end gap-6">
-                <div className="w-52 h-52 rounded bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center flex-shrink-0 shadow-2xl">
-                  <Heart className="w-24 h-24 text-white fill-white" />
+              <div className="bg-gradient-to-b from-[#450af5] to-[#121212] p-4 sm:p-6 pt-6 sm:pt-12 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
+                <div className="w-36 h-36 sm:w-52 sm:h-52 rounded-lg bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center flex-shrink-0 shadow-2xl">
+                  <Heart className="w-16 h-16 sm:w-24 sm:h-24 text-white fill-white" />
                 </div>
-                <div className="flex flex-col gap-2 min-w-0">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white">Playlist</span>
-                  <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight">Liked Songs</h1>
-                  <div className="flex items-center gap-2 text-xs font-medium text-white/80 mt-2">
+                <div className="flex flex-col gap-1.5 sm:gap-2 min-w-0">
+                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white/80">Playlist</span>
+                  <h1 className="text-3xl sm:text-5xl lg:text-7xl font-black text-white tracking-tight">Liked Songs</h1>
+                  <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-white/80 mt-1 sm:mt-2">
                     <span className="font-bold text-white">Your Library</span>
                     <span>•</span>
                     <span>{likedTracks.length} songs</span>
@@ -845,19 +858,19 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-6 flex items-center gap-6">
+              <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-6">
                 <button
                   onClick={() => {
                     if (likedTracks.length > 0) handleSelectTrack(likedTracks[0], likedTracks);
                   }}
                   disabled={likedTracks.length === 0}
-                  className="w-14 h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] disabled:opacity-40 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] disabled:opacity-40 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
                 >
-                  <Play className="w-6 h-6 fill-black ml-0.5" />
+                  <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-black ml-0.5" />
                 </button>
               </div>
 
-              <div className="px-6 pb-12">
+              <div className="px-2 sm:px-6 pb-12">
                 {likedTracks.length === 0 ? (
                   <div className="text-center py-16 text-[#b3b3b3]">
                     <Heart className="w-12 h-12 mx-auto mb-3 text-[#4d4d4d]" />
@@ -947,17 +960,17 @@ export const App: React.FC = () => {
           {currentView === 'history' && (
             <div id="view-history" className="flex flex-col">
               {/* Header Hero Banner */}
-              <div className="bg-gradient-to-b from-[#1e293b] to-[#121212] p-6 pt-12 flex items-end gap-6">
-                <div className="w-52 h-52 rounded bg-[#0f172a] border border-white/10 flex items-center justify-center flex-shrink-0 shadow-2xl">
-                  <History className="w-24 h-24 text-[#38bdf8]" />
+              <div className="bg-gradient-to-b from-[#1e293b] to-[#121212] p-4 sm:p-6 pt-6 sm:pt-12 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 text-center sm:text-left">
+                <div className="w-36 h-36 sm:w-52 sm:h-52 rounded-lg bg-[#0f172a] border border-white/10 flex items-center justify-center flex-shrink-0 shadow-2xl">
+                  <History className="w-16 h-16 sm:w-24 sm:h-24 text-[#38bdf8]" />
                 </div>
-                <div className="flex flex-col gap-2 min-w-0">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white">Listening Activity</span>
-                  <h1 className="text-4xl lg:text-6xl font-black text-white tracking-tight">Listening History</h1>
-                  <p className="text-sm text-[#b3b3b3] mt-1">
+                <div className="flex flex-col gap-1.5 sm:gap-2 min-w-0">
+                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white/80">Listening Activity</span>
+                  <h1 className="text-2xl sm:text-4xl lg:text-6xl font-black text-white tracking-tight">Listening History</h1>
+                  <p className="text-xs sm:text-sm text-[#b3b3b3] mt-1">
                     Songs you've streamed ad-free. Used to suggest daily mixes and generate custom playlists based on your taste.
                   </p>
-                  <div className="flex items-center gap-2 text-xs font-medium text-white/80 mt-2">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-white/80 mt-1 sm:mt-2">
                     <span>{history.length} {history.length === 1 ? 'song streamed' : 'songs streamed'}</span>
                     <span>•</span>
                     <span className="text-[#1db954] font-semibold">100% Ad-Free YouTube Music</span>
@@ -966,27 +979,27 @@ export const App: React.FC = () => {
               </div>
 
               {/* Action Bar */}
-              <div className="p-6 flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-4">
+              <div className="p-4 sm:p-6 flex items-center justify-between flex-wrap gap-3 sm:gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
                   <button
                     onClick={() => {
                       if (history.length > 0) handleSelectTrack(history[0]);
                     }}
                     disabled={history.length === 0}
-                    className="w-14 h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] disabled:opacity-40 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1db954] hover:bg-[#1ed760] disabled:opacity-40 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
                     title="Play from start of history"
                   >
-                    <Play className="w-6 h-6 fill-black ml-0.5" />
+                    <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-black ml-0.5" />
                   </button>
 
                   <button
                     id="btn-create-playlist-from-history"
                     onClick={handleGeneratePlaylistFromHistory}
                     disabled={history.length === 0 || isGeneratingSmartPlaylist}
-                    className="flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-[#6366f1] to-[#a855f7] hover:from-[#4f46e5] hover:to-[#9333ea] text-white font-bold text-sm shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                    className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-3 rounded-full bg-gradient-to-r from-[#6366f1] to-[#a855f7] hover:from-[#4f46e5] hover:to-[#9333ea] text-white font-bold text-xs sm:text-sm shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>{isGeneratingSmartPlaylist ? 'Creating Smart Playlist...' : 'Create Playlist from History'}</span>
+                    <span>{isGeneratingSmartPlaylist ? 'Creating...' : 'Create Playlist from History'}</span>
                   </button>
                 </div>
 
@@ -996,13 +1009,13 @@ export const App: React.FC = () => {
                     className="flex items-center gap-2 text-xs font-semibold text-[#a7a7a7] hover:text-white px-3 py-1.5 rounded border border-white/10 hover:border-white/20 transition-all"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Clear History</span>
+                    <span>Clear</span>
                   </button>
                 )}
               </div>
 
               {/* Track Table */}
-              <div className="px-6 pb-12">
+              <div className="px-2 sm:px-6 pb-12">
                 {history.length === 0 ? (
                   <div className="text-center py-16 text-[#b3b3b3]">
                     <History className="w-12 h-12 mx-auto mb-3 text-[#4d4d4d]" />
@@ -1063,6 +1076,19 @@ export const App: React.FC = () => {
         onToggleLyrics={() => setIsLyricsOpen(!isLyricsOpen)}
         onToggleQueue={() => setIsQueueOpen(!isQueueOpen)}
         onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+      />
+
+      {/* Mobile Bottom Navigation Bar (Spotify Native style) */}
+      <BottomNav
+        currentView={currentView}
+        onNavigate={(view) => {
+          if (view === 'playlist') {
+            setCurrentView('playlist');
+          } else {
+            setCurrentView(view as any);
+          }
+        }}
+        likedCount={likedTrackIds.length}
       />
 
       {/* Synchronized Karaoke Lyrics Overlay */}

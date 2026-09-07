@@ -22,7 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       id="spotify-sidebar"
-      className="w-64 bg-black flex flex-col h-full flex-shrink-0 text-[#b3b3b3] p-3 gap-2 select-none"
+      className="w-64 bg-black hidden md:flex flex-col h-full flex-shrink-0 text-[#b3b3b3] p-3 gap-2 select-none"
     >
       {/* Brand & Top Navigation Box */}
       <div id="sidebar-nav-container" className="bg-[#121212] rounded-lg p-5 flex flex-col gap-5">

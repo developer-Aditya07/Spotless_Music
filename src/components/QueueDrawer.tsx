@@ -26,7 +26,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   return (
     <aside
       id="spotify-queue-drawer"
-      className="w-80 bg-[#121212] border-l border-[#282828] flex flex-col h-full flex-shrink-0 select-none z-20"
+      className="fixed inset-0 md:static md:w-80 bg-[#121212] border-l border-[#282828] flex flex-col h-full flex-shrink-0 select-none z-50 md:z-20"
     >
       {/* Drawer Header */}
       <div id="queue-header" className="p-4 flex items-center justify-between border-b border-[#282828]">
