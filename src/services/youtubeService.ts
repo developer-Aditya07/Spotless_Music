@@ -17,8 +17,58 @@ class YouTubePlayerBridge {
   private onTimeUpdateCallback: ((time: number, duration: number) => void) | null = null;
   private timeInterval: any = null;
 
+  private silentAudio: HTMLAudioElement | null = null;
+
   constructor() {
+    this.initAudioKeepAlive();
     this.loadIframeAPI();
+    this.setupVisibilityHandling();
+  }
+
+  // A silent audio loop informs Android OS and mobile browsers that audio is active,
+  // preventing WebView background lifecycle suspension.
+  private initAudioKeepAlive() {
+    if (typeof window === 'undefined') return;
+    try {
+      // 1-second silent WAV data URI
+      const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      this.silentAudio = new Audio(silentWav);
+      this.silentAudio.loop = true;
+      this.silentAudio.volume = 0.001; // nearly silent but non-zero so media subsystem marks it active
+    } catch {
+      // ignore
+    }
+  }
+
+  private startKeepAlive() {
+    if (this.silentAudio) {
+      this.silentAudio.play().catch(() => {});
+    }
+  }
+
+  private stopKeepAlive() {
+    if (this.silentAudio) {
+      this.silentAudio.pause();
+    }
+  }
+
+  private setupVisibilityHandling() {
+    if (typeof document === 'undefined') return;
+    // When app goes to background or returns to foreground
+    document.addEventListener('visibilitychange', () => {
+      // If player was playing when pushed to background, keep/resume playback
+      if (this.player && typeof this.player.getPlayerState === 'function') {
+        try {
+          const state = this.player.getPlayerState();
+          // If was playing or buffering or cued, force play
+          if (state === 1 || state === 3) {
+            this.player.playVideo();
+          }
+        } catch {
+          // ignore
+        }
+      }
+    });
   }
 
   private loadIframeAPI() {
@@ -45,25 +95,29 @@ class YouTubePlayerBridge {
   }
 
   private initPlayer() {
-    // Create an invisible div for the player if not present
+    // Create an invisible div for the player if not present.
+    // NOTE: In Android WebView & iOS WebKit, elements with 1px / 0.01 opacity / offscreen coordinates
+    // are classified as non-visible and Android Chromium aggressively pauses their media when backgrounded.
+    // Keeping it 200x200 inside viewport with pointer-events:none and z-index:-1 prevents visibility throttling.
     let container = document.getElementById('yt-player-container');
     if (!container) {
       container = document.createElement('div');
       container.id = 'yt-player-container';
       container.style.position = 'fixed';
-      container.style.bottom = '-9999px';
-      container.style.right = '-9999px';
-      container.style.width = '1px';
-      container.style.height = '1px';
-      container.style.opacity = '0.01';
+      container.style.top = '0px';
+      container.style.left = '0px';
+      container.style.width = '200px';
+      container.style.height = '200px';
+      container.style.opacity = '0.001';
       container.style.pointerEvents = 'none';
+      container.style.zIndex = '-9999';
       document.body.appendChild(container);
     }
 
     try {
       this.player = new window.YT.Player('yt-player-container', {
-        height: '100',
-        width: '100',
+        height: '200',
+        width: '200',
         playerVars: {
           autoplay: 1,
           controls: 0,
@@ -73,6 +127,7 @@ class YouTubePlayerBridge {
           rel: 0,
           showinfo: 0,
           iv_load_policy: 3,
+          playsinline: 1,
         },
         events: {
           onReady: () => {
@@ -84,6 +139,11 @@ class YouTubePlayerBridge {
             this.startTimeUpdates();
           },
           onStateChange: (event: any) => {
+            if (event.data === 1) {
+              this.startKeepAlive();
+            } else if (event.data === 2 || event.data === 0) {
+              this.stopKeepAlive();
+            }
             if (this.onStateChangeCallback) {
               this.onStateChangeCallback(event.data);
             }

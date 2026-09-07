@@ -130,14 +130,76 @@ export const App: React.FC = () => {
       // YT.PlayerState: 1 = PLAYING, 2 = PAUSED, 0 = ENDED
       if (state === 1) {
         setIsPlaying(true);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
       } else if (state === 2) {
         setIsPlaying(false);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused';
+        }
       } else if (state === 0) {
         // Song ended, automatically advance to next or play a song with a similar vibe
         handleNextTrackRef.current();
       }
     });
   }, [volume]);
+
+  // Hook into native MediaSession API (Lock screen, Android Notification Player, Background Playback)
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    if (currentTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: currentTrack.album || 'Spotify Ad-Free',
+        artwork: [
+          { src: currentTrack.coverUrl, sizes: '96x96', type: 'image/jpeg' },
+          { src: currentTrack.coverUrl, sizes: '128x128', type: 'image/jpeg' },
+          { src: currentTrack.coverUrl, sizes: '192x192', type: 'image/jpeg' },
+          { src: currentTrack.coverUrl, sizes: '512x512', type: 'image/jpeg' },
+        ],
+      });
+    }
+
+    const handlePlayAction = () => {
+      youtubePlayer.resume();
+      setIsPlaying(true);
+      navigator.mediaSession.playbackState = 'playing';
+    };
+
+    const handlePauseAction = () => {
+      youtubePlayer.pause();
+      setIsPlaying(false);
+      navigator.mediaSession.playbackState = 'paused';
+    };
+
+    const handleNextAction = () => {
+      handleNextTrackRef.current();
+    };
+
+    const handlePrevAction = () => {
+      handlePrevTrackRef.current();
+    };
+
+    const handleSeekToAction = (details: any) => {
+      if (details.seekTime != null) {
+        youtubePlayer.seekTo(details.seekTime);
+        setCurrentTime(details.seekTime);
+      }
+    };
+
+    try {
+      navigator.mediaSession.setActionHandler('play', handlePlayAction);
+      navigator.mediaSession.setActionHandler('pause', handlePauseAction);
+      navigator.mediaSession.setActionHandler('previoustrack', handlePrevAction);
+      navigator.mediaSession.setActionHandler('nexttrack', handleNextAction);
+      navigator.mediaSession.setActionHandler('seekto', handleSeekToAction);
+    } catch {
+      // Some browsers might not support all action handlers
+    }
+  }, [currentTrack]);
 
   // Handle Search queries with race condition protection
   useEffect(() => {
