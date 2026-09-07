@@ -1,0 +1,57 @@
+export interface LyricLine {
+  time: number; // in seconds
+  text: string;
+}
+
+export interface Track {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number; // seconds
+  coverUrl: string;
+  youtubeVideoId: string;
+  isExplicit?: boolean;
+  addedAt?: string;
+  lyrics?: LyricLine[];
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  description: string;
+  coverUrl: string;
+  tracks: Track[];
+  owner: string;
+  isCustom?: boolean;
+  likesCount?: number;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  coverUrl: string;
+}
+
+export type RepeatMode = 'off' | 'all' | 'one';
+
+export interface PlayerState {
+  currentTrack: Track | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+  isMuted: boolean;
+  isShuffle: boolean;
+  repeatMode: RepeatMode;
+  queue: Track[];
+  history: Track[];
+  likedTrackIds: string[];
+}
+
+export interface UserSettings {
+  youtubeApiKey: string;
+  audioQuality: 'auto' | 'high' | 'normal';
+  normalizeVolume: boolean;
+}
