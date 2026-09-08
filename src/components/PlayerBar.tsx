@@ -87,7 +87,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   return (
     <>
       {/* ======================================================== */}
-      {/* 1. MOBILE FULL-SCREEN NOW PLAYING OVERLAY                */}
+      {/* 1. MOBILE FULL-SCREEN NOW PLAYING OVERLAY (Spotify Native) */}
       {/* ======================================================== */}
       {isMobileExpanded && currentTrack && (
         <div
@@ -135,6 +135,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
           {/* Bottom Track Meta & Controls */}
           <div className="flex flex-col gap-5 pb-6">
+            {/* Title & Artist Row */}
             <div className="flex items-center justify-between">
               <div className="flex flex-col min-w-0 pr-4">
                 <h2 className="text-xl sm:text-2xl font-black text-white truncate leading-tight">
@@ -250,69 +251,73 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* 2. MOBILE DOCKED MINI-PLAYER (Exact Spotify Replica)       */}
+      {/* 2. MOBILE DOCKED MINI-PLAYER (Floating above bottom nav) */}
       {/* ======================================================== */}
       {currentTrack && (
         <div
           id="spotify-mobile-mini-player"
           onClick={() => setIsMobileExpanded(true)}
-          className="md:hidden mx-2 mb-2 bg-[#333333] hover:bg-[#3d3d3d] transition-colors rounded-[6px] flex flex-col justify-center shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] select-none z-30"
+          className="md:hidden mx-2 mb-1 bg-[#282828]/95 backdrop-blur-md rounded-lg p-2 flex items-center justify-between shadow-2xl relative overflow-hidden border border-white/10 cursor-pointer active:opacity-95 select-none z-30"
         >
-          {/* Main Content */}
-          <div className="flex items-center justify-between p-2 pr-3">
-            {/* Left: Art and Text */}
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <img
-                src={currentTrack.coverUrl}
-                alt={currentTrack.title}
-                className="w-[38px] h-[38px] rounded-[4px] object-cover shadow-sm flex-shrink-0"
-              />
-              <div className="flex flex-col min-w-0 pr-2">
-                <span className="text-white text-[13px] font-bold truncate">
-                  {currentTrack.title}
-                </span>
-                <span className="text-[12px] text-[#b3b3b3] truncate mt-[1px]">
-                  {currentTrack.artist}
-                </span>
-              </div>
-            </div>
+          {/* Bottom green track progress indicator */}
+          <div
+            className="absolute bottom-0 left-0 h-[2px] bg-[#1db954] transition-all duration-300 pointer-events-none"
+            style={{ width: `${progressPercent}%` }}
+          />
 
-            {/* Right: Controls (Like & Play/Pause) */}
-            <div className="flex items-center gap-4 flex-shrink-0">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleLike(currentTrack);
-                }}
-                className="text-[#b3b3b3] active:scale-90 transition-transform"
-                title="Like"
-              >
-                <Heart className={`w-[22px] h-[22px] ${isLiked ? 'text-[#1db954] fill-[#1db954]' : ''}`} />
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTogglePlay();
-                }}
-                className="text-white active:scale-90 transition-transform"
-                title={isPlaying ? 'Pause' : 'Play'}
-              >
-                {isPlaying ? (
-                  <Pause className="w-[22px] h-[22px] fill-white" />
-                ) : (
-                  <Play className="w-[22px] h-[22px] fill-white" />
-                )}
-              </button>
+          <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+            <img
+              src={currentTrack.coverUrl}
+              alt={currentTrack.title}
+              className="w-10 h-10 rounded object-cover shadow flex-shrink-0"
+            />
+            <div className="flex flex-col min-w-0">
+              <span className="text-white text-xs font-bold truncate">
+                {currentTrack.title}
+              </span>
+              <span className="text-[11px] text-[#a7a7a7] truncate font-medium">
+                {currentTrack.artist}
+              </span>
             </div>
           </div>
 
-          {/* Spotify Native Bottom Progress Bar */}
-          <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/20">
-            <div
-              className="h-full bg-white transition-all duration-300 ease-linear rounded-r-full"
-              style={{ width: `${progressPercent}%` }}
-            />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleLike(currentTrack);
+              }}
+              className="p-2 text-[#b3b3b3] active:scale-90"
+              title="Like"
+            >
+              <Heart className={`w-5 h-5 ${isLiked ? 'text-[#1db954] fill-[#1db954]' : ''}`} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePlay();
+              }}
+              className="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center active:scale-95 shadow transition-transform"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4 fill-black" />
+              ) : (
+                <Play className="w-4 h-4 fill-black ml-0.5" />
+              )}
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onNext();
+              }}
+              className="p-2 text-[#b3b3b3] active:scale-90"
+              title="Next"
+            >
+              <SkipForward className="w-5 h-5 fill-current" />
+            </button>
           </div>
         </div>
       )}
