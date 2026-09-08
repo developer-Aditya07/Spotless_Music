@@ -77,6 +77,7 @@ export const App: React.FC = () => {
   const contextTracksRef = useRef<Track[]>(INITIAL_TRACKS);
   const playedTrackIdsRef = useRef<Set<string>>(new Set([INITIAL_TRACKS[0].id, INITIAL_TRACKS[0].youtubeVideoId]));
   const handleNextTrackRef = useRef<() => void>(() => {});
+  const handlePrevTrackRef = useRef<() => void>(() => {}); // FIXED: Added missing Ref
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -414,9 +415,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // Always keep handleNextTrackRef updated
-  handleNextTrackRef.current = handleNextTrack;
-
   const handlePrevTrack = () => {
     if (currentTime > 3 && currentTrack) {
       youtubePlayer.seekTo(0);
@@ -433,6 +431,10 @@ export const App: React.FC = () => {
       handleSelectTrack(contextList[prevIndex], contextList);
     }
   };
+
+  // FIXED: Always keep refs updated so background media session can access them
+  handleNextTrackRef.current = handleNextTrack;
+  handlePrevTrackRef.current = handlePrevTrack;
 
   const handleSeek = (seconds: number) => {
     setCurrentTime(seconds);
