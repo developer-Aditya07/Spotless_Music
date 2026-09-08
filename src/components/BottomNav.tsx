@@ -18,8 +18,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav
-      id="spotify-mobile-bottom-nav"
-      className="md:hidden flex items-center justify-around bg-[#121212]/95 backdrop-blur-lg border-t border-[#282828] pt-2 pb-8 px-3 z-40 select-none"
+    id="spotify-mobile-bottom-nav"
+    className="md:hidden flex items-center justify-around bg-[#121212]/95 backdrop-blur-lg border-t border-[#282828] pt-2 pb-12 px-3 z-40 select-none"
     >
       <button
         id="btn-mobile-nav-home"
