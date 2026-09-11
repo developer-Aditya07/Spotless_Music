@@ -161,24 +161,66 @@ export async function createSmartPlaylistFromHistory(
   };
 }
 
-// Artist Vibe & Style Map for Smart Autoplay
+// Clean and normalize song titles to detect duplicate versions of the same song
+export function normalizeSongTitle(title: string): string {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    // Remove featured artists and remix notations
+    .replace(/\s*(?:\[|\()(?:feat\.?|ft\.?|featuring|with)[^\]\)]*(?:\]|\))/gi, '')
+    // Remove parenthetical video/audio descriptors
+    .replace(/\s*(?:\[|\()(?:official\s*(?:video|audio|music\s*video|lyric\s*video|hd|hq|4k|visualizer)?|music\s*video|lyric\s*video|lyrics|hd|hq|4k|visualizer|remastered|remaster|radio\s*edit|original\s*mix|best\s*audio|pseudo\s*video|explicit|slowed\s*\+\s*reverb|slowed|reverb|karaoke(?:\s*version)?|live(?:\s*on[^\]\)]*)?|live|cover(?:\s*by[^\]\)]*)?)[^\]\)]*(?:\]|\))/gi, '')
+    // Remove common trailing markers like "- Official Music Video"
+    .replace(/\s*[-–—:]\s*(?:official\s*(?:video|audio|music\s*video|lyric\s*video|lyrics|hd|hq|visualizer|remastered|slowed|live)?).*/gi, '')
+    // Replace non-alphanumeric with spaces and trim
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Compare two track titles to see if they are the same core song
+export function areTitlesEffectivelySame(titleA: string, titleB: string): boolean {
+  const normA = normalizeSongTitle(titleA);
+  const normB = normalizeSongTitle(titleB);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  // If one title starts with or contains the exact normalized title of the other
+  if (normA.length >= 4 && normB.length >= 4) {
+    if (normA.startsWith(normB) || normB.startsWith(normA)) return true;
+    if (normA.includes(normB) || normB.includes(normA)) return true;
+  }
+  return false;
+}
+
+// Artist Vibe & Style Map for Smart Autoplay and recommendations
 const ARTIST_VIBE_MAP: Record<string, string[]> = {
-  'the weeknd': ['Post Malone', 'Bruno Mars', 'Daft Punk', 'Khalid', 'SZA'],
+  'the weeknd': ['Post Malone', 'Bruno Mars', 'Daft Punk', 'Khalid', 'SZA', 'Frank Ocean'],
   'dua lipa': ['Sabrina Carpenter', 'Calvin Harris', 'Miley Cyrus', 'Katy Perry', 'Charli XCX'],
   'harry styles': ['Taylor Swift', 'Niall Horan', 'Shawn Mendes', 'Ed Sheeran', 'Coldplay'],
   'sabrina carpenter': ['Olivia Rodrigo', 'Chappell Roan', 'Dua Lipa', 'Ariana Grande', 'Billie Eilish'],
-  'imagine dragons': ['OneRepublic', 'Coldplay', 'Fall Out Boy', 'The Killers', 'Bastille'],
+  'imagine dragons': ['OneRepublic', 'Coldplay', 'Fall Out Boy', 'The Killers', 'Bastille', 'Twenty One Pilots'],
   'taylor swift': ['Olivia Rodrigo', 'Sabrina Carpenter', 'Lana Del Rey', 'Phoebe Bridgers', 'Gracie Abrams'],
   'billie eilish': ['Lana Del Rey', 'Lorde', 'Olivia Rodrigo', 'FINNEAS', 'Girl in Red'],
   'ed sheeran': ['Shawn Mendes', 'Lewis Capaldi', 'James Arthur', 'Sam Smith', 'Harry Styles'],
   'coldplay': ['OneRepublic', 'The Script', 'Keane', 'Snow Patrol', 'Imagine Dragons'],
-  'post malone': ['The Weeknd', 'Swae Lee', 'Juice WRLD', 'Khalid', '21 Savage'],
+  'post malone': ['The Weeknd', 'Swae Lee', 'Juice WRLD', 'Khalid', '21 Savage', 'Morgan Wallen'],
   'olivia rodrigo': ['Sabrina Carpenter', 'Chappell Roan', 'Taylor Swift', 'Billie Eilish', 'Conan Gray'],
   'chappell roan': ['Sabrina Carpenter', 'Olivia Rodrigo', 'Charli XCX', 'Remi Wolf', 'Rina Sawayama'],
-  'drake': ['Travis Scott', '21 Savage', 'Kendrick Lamar', 'Future', 'J. Cole'],
+  'drake': ['Travis Scott', '21 Savage', 'Kendrick Lamar', 'Future', 'J. Cole', 'Lil Baby'],
   'kendrick lamar': ['J. Cole', 'Baby Keem', 'Drake', 'A$AP Rocky', 'Tyler, The Creator'],
-  'bts': ['Jung Kook', 'BLACKPINK', 'Stray Kids', 'NewJeans', 'TWICE'],
+  'bts': ['Jung Kook', 'BLACKPINK', 'Stray Kids', 'NewJeans', 'TWICE', 'SEVENTEEN'],
   'ariana grande': ['Sabrina Carpenter', 'Dua Lipa', 'Doja Cat', 'Camila Cabello', 'SZA'],
+  'eminem': ['Dr. Dre', '50 Cent', 'Snoop Dogg', 'Tupac', 'Kendrick Lamar', 'Logic'],
+  'travis scott': ['Drake', 'Playboi Carti', 'Future', 'Don Toliver', 'Lil Uzi Vert'],
+  'justin bieber': ['Shawn Mendes', 'Charlie Puth', 'Zayn', 'The Weeknd', 'Ed Sheeran'],
+  'bruno mars': ['Anderson .Paak', 'The Weeknd', 'Silk Sonic', 'Michael Jackson', 'Mark Ronson'],
+  'bad bunny': ['Rauw Alejandro', 'J Balvin', 'Ozuna', 'Anuel AA', 'Feid', 'Daddy Yankee'],
+  'arijit singh': ['Atif Aslam', 'Mohit Chauhan', 'Jubin Nautiyal', 'Armaan Malik', 'Pritam', 'KK'],
+  'sidhu moose wala': ['Karan Aujla', 'Diljit Dosanjh', 'Shubh', 'AP Dhillon', 'Amrit Maan'],
+  'karan aujla': ['Sidhu Moose Wala', 'Diljit Dosanjh', 'Shubh', 'AP Dhillon', 'Ikky'],
+  'diljit dosanjh': ['Karan Aujla', 'Sidhu Moose Wala', 'AP Dhillon', 'Badshah', 'Guru Randhawa'],
+  'ap dhillon': ['Gurinder Gill', 'Shubh', 'Karan Aujla', 'Diljit Dosanjh', 'Talwiinder'],
+  'shubh': ['AP Dhillon', 'Karan Aujla', 'Sidhu Moose Wala', 'Talwiinder'],
 };
 
 // Autoplay / Radio Engine: Finds fresh tracks with a similar vibe to the current song
@@ -202,11 +244,11 @@ export async function fetchSimilarVibeTracks(
   const queries: string[] = [];
   if (relatedArtists.length > 0) {
     const randomRelated = relatedArtists[Math.floor(Math.random() * relatedArtists.length)];
-    queries.push(`${randomRelated} song audio`, `${currentTrack.artist} song audio`);
+    queries.push(`${randomRelated} official audio`, `${currentTrack.artist} official audio`);
   } else {
     queries.push(
-      `${currentTrack.artist} songs audio`,
-      `${currentTrack.title} similar song audio`
+      `${currentTrack.artist} official audio`,
+      `${currentTrack.title} radio music`
     );
   }
 
@@ -217,15 +259,18 @@ export async function fetchSimilarVibeTracks(
     try {
       const results = await searchYouTubeMusic(q, apiKey);
       for (const t of results) {
+        // Strict duplicate check: ID, video ID, and normalized title
         if (
           !excludedIds.has(t.id) &&
+          !excludedIds.has(t.youtubeVideoId) &&
+          !excludedIds.has(normalizeSongTitle(t.title)) &&
           t.youtubeVideoId !== currentTrack.youtubeVideoId &&
-          t.title.toLowerCase() !== currentTrack.title.toLowerCase()
+          !areTitlesEffectivelySame(t.title, currentTrack.title)
         ) {
           candidates.push(t);
         }
       }
-      if (candidates.length >= 6) break;
+      if (candidates.length >= 8) break;
     } catch (e) {
       console.warn('Error querying similar vibe tracks:', q, e);
     }
@@ -235,8 +280,11 @@ export async function fetchSimilarVibeTracks(
   for (const local of INITIAL_TRACKS) {
     if (
       !excludedIds.has(local.id) &&
+      !excludedIds.has(local.youtubeVideoId) &&
+      !excludedIds.has(normalizeSongTitle(local.title)) &&
       local.id !== currentTrack.id &&
-      local.youtubeVideoId !== currentTrack.youtubeVideoId
+      local.youtubeVideoId !== currentTrack.youtubeVideoId &&
+      !areTitlesEffectivelySame(local.title, currentTrack.title)
     ) {
       const isArtistMatch = local.artist.toLowerCase() === artistLower;
       const isRelatedMatch = relatedArtists.some((r) =>
@@ -250,18 +298,178 @@ export async function fetchSimilarVibeTracks(
     }
   }
 
-  // Deduplicate candidates
+  // Deduplicate candidates by ID, Video ID, and core normalized Title
   const seenIds = new Set<string>();
   const seenVideos = new Set<string>();
+  const seenTitles = new Set<string>();
   const uniqueCandidates: Track[] = [];
 
   for (const c of candidates) {
-    if (!seenIds.has(c.id) && !seenVideos.has(c.youtubeVideoId)) {
+    const norm = normalizeSongTitle(c.title);
+    if (!seenIds.has(c.id) && !seenVideos.has(c.youtubeVideoId) && !seenTitles.has(norm)) {
       seenIds.add(c.id);
       seenVideos.add(c.youtubeVideoId);
+      seenTitles.add(norm);
       uniqueCandidates.push(c);
     }
   }
 
   return uniqueCandidates;
+}
+
+export interface SearchCategorizedResults {
+  topResult: Track | null;
+  songs: Track[];
+  moreByArtist: Track[];
+  similarVibe: Track[];
+  allTracks: Track[];
+}
+
+// Spotify/YouTube Music-Style Search Engine:
+// 1. Identifies the primary "Top Result"
+// 2. Filters out duplicates/covers/clones of the queried track
+// 3. Fetches other popular songs by the same artist ("More by [Artist]")
+// 4. Fetches complementary recommendations matching the music style ("Fans Also Like / Similar Vibe")
+export async function searchTracksCategorized(
+  query: string,
+  apiKey?: string
+): Promise<SearchCategorizedResults> {
+  const primaryResults = await searchYouTubeMusic(query, apiKey);
+  if (!primaryResults || primaryResults.length === 0) {
+    return {
+      topResult: null,
+      songs: [],
+      moreByArtist: [],
+      similarVibe: [],
+      allTracks: [],
+    };
+  }
+
+  // Deduplicate primary results: keep the best version of each distinct song
+  const deduplicatedPrimary: Track[] = [];
+  const seenSongKeys = new Set<string>();
+  const seenVideoIds = new Set<string>();
+
+  for (const track of primaryResults) {
+    if (seenVideoIds.has(track.youtubeVideoId)) continue;
+
+    const norm = normalizeSongTitle(track.title);
+    let isDuplicate = false;
+    for (const seen of seenSongKeys) {
+      if (seen === norm || areTitlesEffectivelySame(track.title, seen)) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      seenVideoIds.add(track.youtubeVideoId);
+      seenSongKeys.add(norm || track.title);
+      deduplicatedPrimary.push(track);
+    }
+  }
+
+  const topResult = deduplicatedPrimary[0] || null;
+  const songs = deduplicatedPrimary.slice(1);
+  const moreByArtist: Track[] = [];
+  const similarVibe: Track[] = [];
+
+  // If top result is found, fetch real Spotify/YouTube Music-grade sections:
+  if (topResult && topResult.artist) {
+    const artistName = topResult.artist;
+    const artistLower = artistName.toLowerCase();
+
+    // 1. "More by [Artist]" -> Search official audio for top artist
+    try {
+      const artistTracks = await searchYouTubeMusic(`${artistName} official audio`, apiKey);
+      for (const t of artistTracks) {
+        const norm = normalizeSongTitle(t.title);
+        let isDup = seenVideoIds.has(t.youtubeVideoId);
+        for (const seen of seenSongKeys) {
+          if (seen === norm || areTitlesEffectivelySame(t.title, seen)) {
+            isDup = true;
+            break;
+          }
+        }
+        if (!isDup) {
+          seenVideoIds.add(t.youtubeVideoId);
+          seenSongKeys.add(norm || t.title);
+          moreByArtist.push(t);
+        }
+        if (moreByArtist.length >= 6) break;
+      }
+    } catch (e) {
+      console.warn('Error fetching more by artist:', e);
+    }
+
+    // 2. "Similar Vibe / Fans Also Like"
+    let relatedArtists: string[] = [];
+    for (const [key, list] of Object.entries(ARTIST_VIBE_MAP)) {
+      if (artistLower.includes(key) || key.includes(artistLower)) {
+        relatedArtists = list;
+        break;
+      }
+    }
+
+    const recoQuery = relatedArtists.length > 0
+      ? `${relatedArtists[0]} official audio`
+      : `${topResult.title} radio`;
+
+    try {
+      const recoTracks = await searchYouTubeMusic(recoQuery, apiKey);
+      for (const t of recoTracks) {
+        const norm = normalizeSongTitle(t.title);
+        let isDup = seenVideoIds.has(t.youtubeVideoId);
+        for (const seen of seenSongKeys) {
+          if (seen === norm || areTitlesEffectivelySame(t.title, seen)) {
+            isDup = true;
+            break;
+          }
+        }
+        if (!isDup) {
+          seenVideoIds.add(t.youtubeVideoId);
+          seenSongKeys.add(norm || t.title);
+          similarVibe.push(t);
+        }
+        if (similarVibe.length >= 6) break;
+      }
+    } catch (e) {
+      console.warn('Error fetching similar vibe tracks:', e);
+    }
+
+    // Complement from initial catalog if needed
+    if (similarVibe.length < 4) {
+      for (const local of INITIAL_TRACKS) {
+        if (!seenVideoIds.has(local.youtubeVideoId) && !areTitlesEffectivelySame(local.title, topResult.title)) {
+          seenVideoIds.add(local.youtubeVideoId);
+          similarVibe.push(local);
+        }
+        if (similarVibe.length >= 5) break;
+      }
+    }
+  }
+
+  // All tracks unified list for seamless sequential playback
+  const allTracks: Track[] = [];
+  if (topResult) allTracks.push(topResult);
+  allTracks.push(...songs);
+  allTracks.push(...moreByArtist);
+  allTracks.push(...similarVibe);
+
+  return {
+    topResult,
+    songs,
+    moreByArtist,
+    similarVibe,
+    allTracks,
+  };
+}
+
+// Backwards-compatible flat search with recommendations
+export async function searchTracksWithRecommendations(
+  query: string,
+  apiKey?: string
+): Promise<Track[]> {
+  const categorized = await searchTracksCategorized(query, apiKey);
+  return categorized.allTracks;
 }

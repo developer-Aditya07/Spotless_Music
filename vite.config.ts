@@ -13,12 +13,32 @@ function parseDurationText(durationStr: string): number {
   return 210;
 }
 
-function cleanTitle(rawTitle: string): string {
-  if (!rawTitle) return 'Unknown Title';
-  return rawTitle
-    .replace(/(\(|\[)(Official|Music Video|Audio|Lyric Video|Video|HD|HQ|Visualizer|Lyrics)(\)|\])/gi, '')
-    .replace(/(&quot;|&#39;|&amp;)/g, (m) => (m === '&quot;' ? '"' : m === '&#39;' ? "'" : '&'))
+function cleanTitleAndArtist(rawTitle: string, channelArtist?: string) {
+  if (!rawTitle) return { title: 'Unknown Title', artist: channelArtist || 'Unknown Artist' };
+  
+  let text = rawTitle.replace(/(&quot;|&#39;|&amp;)/g, (m) => (m === '&quot;' ? '"' : m === '&#39;' ? "'" : '&')).trim();
+  let artist = (channelArtist || 'Unknown Artist').replace(/\s*-\s*Topic$/i, '').trim();
+  let title = text;
+
+  // Many YouTube music videos are titled "Artist - Song Name" or "Artist: Song Name"
+  const splitMatch = text.match(/^(.+?)\s*[-–—:]\s*(.+)$/);
+  if (splitMatch && splitMatch[1].trim().length > 0 && splitMatch[2].trim().length > 0) {
+    const candidateArtist = splitMatch[1].trim();
+    const candidateTitle = splitMatch[2].trim();
+    if (candidateArtist.length <= 40 && !candidateArtist.toLowerCase().includes('playlist')) {
+      artist = candidateArtist;
+      title = candidateTitle;
+    }
+  }
+
+  // Strip YouTube parenthetical/bracket tags: (Official Music Video), [Audio], (Lyrics), etc.
+  title = title
+    .replace(/\s*(?:\[|\()(?:official\s*(?:video|audio|music\s*video|lyric\s*video|hd|hq|4k|visualizer)?|music\s*video|lyric\s*video|lyrics|hd|hq|4k|visualizer|remastered|remaster|radio\s*edit|original\s*mix|best\s*audio|pseudo\s*video|explicit)[^\]\)]*(?:\]|\))/gi, '')
+    .replace(/\s*[-–—:]\s*(?:official\s*(?:video|audio|music\s*video|lyric\s*video|lyrics|hd|hq|visualizer|remastered)?).*/gi, '')
+    .replace(/\s+/g, ' ')
     .trim();
+
+  return { title, artist };
 }
 
 async function handleYouTubeSearch(query: string, apiKey?: string) {
@@ -50,16 +70,19 @@ async function handleYouTubeSearch(query: string, apiKey?: string) {
       if (res.ok) {
         const data = await res.json();
         if (data.items && data.items.length > 0) {
-          return data.items.map((item: any) => ({
-            id: `yt-${item.id.videoId}`,
-            title: cleanTitle(item.snippet.title),
-            artist: item.snippet.channelTitle,
-            album: 'YouTube Music',
-            duration: 210,
-            coverUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
-            youtubeVideoId: item.id.videoId,
-            addedAt: 'Just now',
-          }));
+          return data.items.map((item: any) => {
+            const parsed = cleanTitleAndArtist(item.snippet.title, item.snippet.channelTitle);
+            return {
+              id: `yt-${item.id.videoId}`,
+              title: parsed.title,
+              artist: parsed.artist,
+              album: 'YouTube Music',
+              duration: 210,
+              coverUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
+              youtubeVideoId: item.id.videoId,
+              addedAt: 'Just now',
+            };
+          });
         }
       }
     } catch (e) {
@@ -69,7 +92,9 @@ async function handleYouTubeSearch(query: string, apiKey?: string) {
 
   // Fast direct YouTube Music search (No API key needed)
   try {
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' audio')}`;
+    const isExplicitSearch = /song|music|audio|track|lyrics/i.test(query);
+    const searchQuery = isExplicitSearch ? query : `${query} song`;
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
     const res = await fetch(searchUrl, {
       headers: {
         'User-Agent':
@@ -93,24 +118,38 @@ async function handleYouTubeSearch(query: string, apiKey?: string) {
         const v = item.videoRenderer;
         if (v && v.videoId) {
           const rawTitle = v.title?.runs?.[0]?.text || '';
-          const artist = v.ownerText?.runs?.[0]?.text || 'Various Artists';
+          const channelArtist = v.ownerText?.runs?.[0]?.text || 'Various Artists';
           const durationStr = v.lengthText?.simpleText || '3:30';
+          const durationSec = parseDurationText(durationStr);
+
+          // Filter out short sound effects or clip tests under 45s unless explicitly requested
+          if (durationSec < 45 && !query.toLowerCase().includes('effect') && !query.toLowerCase().includes('sound')) {
+            continue;
+          }
+
+          // Filter out long mixes or full concert uploads if looking for tracks
+          if (durationSec > 1200 && !query.toLowerCase().includes('album') && !query.toLowerCase().includes('mix') && !query.toLowerCase().includes('playlist')) {
+            continue;
+          }
+
+          const parsed = cleanTitleAndArtist(rawTitle, channelArtist);
+
           const thumbnail =
             v.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
             `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
 
           tracks.push({
             id: `yt-${v.videoId}`,
-            title: cleanTitle(rawTitle),
-            artist: artist,
+            title: parsed.title,
+            artist: parsed.artist,
             album: 'YouTube Music Single',
-            duration: parseDurationText(durationStr),
+            duration: durationSec,
             coverUrl: thumbnail,
             youtubeVideoId: v.videoId,
             addedAt: 'Just now',
           });
 
-          if (tracks.length >= 15) break;
+          if (tracks.length >= 20) break;
         }
       }
 

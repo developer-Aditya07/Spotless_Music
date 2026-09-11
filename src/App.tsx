@@ -13,7 +13,17 @@ import { AddToPlaylistModal } from './components/AddToPlaylistModal';
 import { Track, Playlist, RepeatMode, UserSettings } from './types';
 import { INITIAL_TRACKS, INITIAL_PLAYLISTS, CATEGORIES } from './data/musicData';
 import { youtubePlayer, searchYouTubeMusic } from './services/youtubeService';
-import { generateSuggestedMixes, createSmartPlaylistFromHistory, getTopArtists, fetchSimilarVibeTracks } from './services/recommendationService';
+import {
+  generateSuggestedMixes,
+  createSmartPlaylistFromHistory,
+  getTopArtists,
+  fetchSimilarVibeTracks,
+  searchTracksWithRecommendations,
+  searchTracksCategorized,
+  SearchCategorizedResults,
+  normalizeSongTitle,
+  areTitlesEffectivelySame,
+} from './services/recommendationService';
 
 export const App: React.FC = () => {
   // Navigation State
@@ -77,11 +87,11 @@ export const App: React.FC = () => {
   const contextTracksRef = useRef<Track[]>(INITIAL_TRACKS);
   const playedTrackIdsRef = useRef<Set<string>>(new Set([INITIAL_TRACKS[0].id, INITIAL_TRACKS[0].youtubeVideoId]));
   const handleNextTrackRef = useRef<() => void>(() => {});
-  const handlePrevTrackRef = useRef<() => void>(() => {}); // FIXED: Added missing Ref
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Track[]>(INITIAL_TRACKS);
+  const [categorizedSearch, setCategorizedSearch] = useState<SearchCategorizedResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
   // Modals & Panels
@@ -204,10 +214,11 @@ export const App: React.FC = () => {
     }
   }, [currentTrack]);
 
-  // Handle Search queries with race condition protection
+  // Handle Search queries with race condition protection & smart recommendations
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults(INITIAL_TRACKS);
+      setCategorizedSearch(null);
       setIsSearching(false);
       return;
     }
@@ -216,9 +227,10 @@ export const App: React.FC = () => {
     setIsSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const results = await searchYouTubeMusic(searchQuery, settings.youtubeApiKey);
+        const categorized = await searchTracksCategorized(searchQuery, settings.youtubeApiKey);
         if (isCurrent) {
-          setSearchResults(results);
+          setCategorizedSearch(categorized);
+          setSearchResults(categorized.allTracks);
           setIsSearching(false);
         }
       } catch (err) {
@@ -243,10 +255,14 @@ export const App: React.FC = () => {
     setIsPlaying(true);
     youtubePlayer.playVideo(track.youtubeVideoId);
 
-    // Keep track of played song IDs so similar vibe engine doesn't repeat songs
+    // Keep track of played song IDs and normalized title so similar vibe engine doesn't repeat songs
     playedTrackIdsRef.current.add(track.id);
     if (track.youtubeVideoId) {
       playedTrackIdsRef.current.add(track.youtubeVideoId);
+    }
+    const normTitle = normalizeSongTitle(track.title);
+    if (normTitle) {
+      playedTrackIdsRef.current.add(normTitle);
     }
 
     if (contextTracks && contextTracks.length > 0) {
@@ -255,7 +271,7 @@ export const App: React.FC = () => {
 
     // Record into watch/listening history (keep last 50, move current to top)
     setHistory((prev) => {
-      const filtered = prev.filter((t) => t.id !== track.id);
+      const filtered = prev.filter((t) => t.id !== track.id && !areTitlesEffectivelySame(t.title, track.title));
       return [track, ...filtered].slice(0, 50);
     });
   };
@@ -339,19 +355,35 @@ export const App: React.FC = () => {
 
       if (isShuff) {
         const remaining = contextList.filter(
-          (t) => t.id !== current.id && !playedTrackIdsRef.current.has(t.id)
+          (t) =>
+            t.id !== current.id &&
+            t.youtubeVideoId !== current.youtubeVideoId &&
+            !areTitlesEffectivelySame(t.title, current.title) &&
+            !playedTrackIdsRef.current.has(t.id) &&
+            !playedTrackIdsRef.current.has(normalizeSongTitle(t.title))
         );
-        const candidates = remaining.length > 0 ? remaining : contextList.filter((t) => t.id !== current.id);
+        const candidates = remaining.length > 0 ? remaining : contextList.filter((t) => t.id !== current.id && !areTitlesEffectivelySame(t.title, current.title));
         if (candidates.length > 0) {
           const randomTrack = candidates[Math.floor(Math.random() * candidates.length)];
           handleSelectTrack(randomTrack, contextList);
           return;
         }
-      } else if (currentIndex !== -1 && currentIndex + 1 < contextList.length) {
-        // Next song in playlist
-        const nextInList = contextList[currentIndex + 1];
-        handleSelectTrack(nextInList, contextList);
-        return;
+      } else if (currentIndex !== -1) {
+        // Find next song in list that is NOT the same song version/title
+        let nextIndex = currentIndex + 1;
+        while (
+          nextIndex < contextList.length &&
+          (areTitlesEffectivelySame(contextList[nextIndex].title, current.title) ||
+            contextList[nextIndex].youtubeVideoId === current.youtubeVideoId)
+        ) {
+          nextIndex++;
+        }
+
+        if (nextIndex < contextList.length) {
+          const nextInList = contextList[nextIndex];
+          handleSelectTrack(nextInList, contextList);
+          return;
+        }
       } else if (repeat === 'all' && contextList.length > 0) {
         // Loop back to start of playlist
         handleSelectTrack(contextList[0], contextList);
@@ -378,6 +410,10 @@ export const App: React.FC = () => {
           if (nextVibeTrack.youtubeVideoId) {
             playedTrackIdsRef.current.add(nextVibeTrack.youtubeVideoId);
           }
+          const normTitle = normalizeSongTitle(nextVibeTrack.title);
+          if (normTitle) {
+            playedTrackIdsRef.current.add(normTitle);
+          }
 
           // Pre-populate upcoming similar tracks into queue
           if (upcomingVibeTracks.length > 0) {
@@ -394,26 +430,41 @@ export const App: React.FC = () => {
 
       // Fallback: Pick an unplayed track from the catalog that is not the current song
       const unplayed = INITIAL_TRACKS.filter(
-        (t) => !playedTrackIdsRef.current.has(t.id) && t.id !== current.id
+        (t) =>
+          !playedTrackIdsRef.current.has(t.id) &&
+          !playedTrackIdsRef.current.has(normalizeSongTitle(t.title)) &&
+          t.id !== current.id &&
+          t.youtubeVideoId !== current.youtubeVideoId &&
+          !areTitlesEffectivelySame(t.title, current.title)
       );
 
       if (unplayed.length > 0) {
         const pick = unplayed[Math.floor(Math.random() * unplayed.length)];
         playedTrackIdsRef.current.add(pick.id);
+        const normTitle = normalizeSongTitle(pick.title);
+        if (normTitle) {
+          playedTrackIdsRef.current.add(normTitle);
+        }
         showToast(`Playing next: ${pick.title} • ${pick.artist}`);
         handleSelectTrack(pick);
         return;
       }
 
       // Reset played cache if all played, and pick another track
-      playedTrackIdsRef.current = new Set([current.id]);
-      const otherTracks = INITIAL_TRACKS.filter((t) => t.id !== current.id);
+      const currentNorm = normalizeSongTitle(current.title);
+      playedTrackIdsRef.current = new Set([current.id, currentNorm]);
+      const otherTracks = INITIAL_TRACKS.filter(
+        (t) => t.id !== current.id && !areTitlesEffectivelySame(t.title, current.title)
+      );
       if (otherTracks.length > 0) {
         const fallback = otherTracks[Math.floor(Math.random() * otherTracks.length)];
         handleSelectTrack(fallback);
       }
     }
   };
+
+  // Always keep handleNextTrackRef updated
+  handleNextTrackRef.current = handleNextTrack;
 
   const handlePrevTrack = () => {
     if (currentTime > 3 && currentTrack) {
@@ -431,10 +482,6 @@ export const App: React.FC = () => {
       handleSelectTrack(contextList[prevIndex], contextList);
     }
   };
-
-  // FIXED: Always keep refs updated so background media session can access them
-  handleNextTrackRef.current = handleNextTrack;
-  handlePrevTrackRef.current = handlePrevTrack;
 
   const handleSeek = (seconds: number) => {
     setCurrentTime(seconds);
@@ -851,22 +898,195 @@ export const App: React.FC = () => {
 
           {/* VIEW: SEARCH */}
           {currentView === 'search' && (
-            <div id="view-search" className="p-6 flex flex-col gap-6">
+            <div id="view-search" className="p-4 sm:p-6 flex flex-col gap-8">
               {searchQuery.trim() ? (
-                <div>
-                  <h2 className="text-xl font-bold text-white mb-4">
-                    {isSearching ? 'Searching YouTube Music...' : `Results for "${searchQuery}"`}
-                  </h2>
-                  <TrackTable
-                    tracks={searchResults}
-                    currentTrack={currentTrack}
-                    isPlaying={isPlaying}
-                    likedTrackIds={likedTrackIds}
-                    onSelectTrack={(t) => handleSelectTrack(t, searchResults)}
-                    onTogglePlay={handleTogglePlay}
-                    onToggleLike={handleToggleLike}
-                    onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
-                  />
+                <div className="flex flex-col gap-8">
+                  {/* Search Status & Query Header */}
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white">
+                      {isSearching ? 'Searching YouTube Music...' : `Results for "${searchQuery}"`}
+                    </h2>
+                    {categorizedSearch?.topResult && (
+                      <span className="text-xs text-[#a7a7a7] hidden sm:inline-block">
+                        Categorized like Spotify & YouTube Music
+                      </span>
+                    )}
+                  </div>
+
+                  {/* SPOTIFY/YOUTUBE MUSIC TOP RESULT & SONGS SPLIT (when available) */}
+                  {categorizedSearch?.topResult && (
+                    <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6">
+                      {/* Top Result Card */}
+                      <div className="flex flex-col gap-3">
+                        <h3 className="text-lg font-bold text-white">Top result</h3>
+                        <div
+                          id={`top-result-card-${categorizedSearch.topResult.id}`}
+                          onClick={() => handleSelectTrack(categorizedSearch.topResult!, searchResults)}
+                          className="group relative p-5 rounded-xl bg-[#181818] hover:bg-[#282828] transition-colors cursor-pointer flex flex-col justify-between h-[220px]"
+                        >
+                          <div className="flex flex-col gap-3">
+                            <img
+                              src={categorizedSearch.topResult.coverUrl}
+                              alt={categorizedSearch.topResult.title}
+                              className="w-24 h-24 rounded-lg object-cover shadow-lg"
+                            />
+                            <div className="flex flex-col min-w-0 mt-1">
+                              <span className="text-xl sm:text-2xl font-bold text-white truncate group-hover:underline">
+                                {categorizedSearch.topResult.title}
+                              </span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-black/40 text-[#a7a7a7] uppercase tracking-wider">
+                                  Song
+                                </span>
+                                <span className="text-sm text-[#b3b3b3] truncate">
+                                  {categorizedSearch.topResult.artist}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Hover Play Button */}
+                          <div className="absolute right-5 bottom-5">
+                            <button
+                              id="btn-play-top-result"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (currentTrack?.id === categorizedSearch.topResult!.id) {
+                                  handleTogglePlay();
+                                } else {
+                                  handleSelectTrack(categorizedSearch.topResult!, searchResults);
+                                }
+                              }}
+                              className="w-12 h-12 rounded-full bg-[#1db954] text-black flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-2 transition-all duration-200 hover:scale-105"
+                              title="Play"
+                            >
+                              {currentTrack?.id === categorizedSearch.topResult!.id && isPlaying ? (
+                                <Pause className="w-6 h-6 fill-black" />
+                              ) : (
+                                <Play className="w-6 h-6 fill-black ml-0.5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Songs Section (First few deduplicated songs) */}
+                      {categorizedSearch.songs.length > 0 && (
+                        <div className="flex flex-col gap-3">
+                          <h3 className="text-lg font-bold text-white">Songs</h3>
+                          <div className="flex flex-col divide-y divide-white/5 bg-[#181818]/60 rounded-xl p-2">
+                            {categorizedSearch.songs.slice(0, 4).map((t) => {
+                              const isCurrent = currentTrack?.id === t.id;
+                              return (
+                                <div
+                                  key={t.id}
+                                  id={`search-song-row-${t.id}`}
+                                  onClick={() => handleSelectTrack(t, searchResults)}
+                                  className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="relative w-10 h-10 flex-shrink-0">
+                                      <img
+                                        src={t.coverUrl}
+                                        alt={t.title}
+                                        className="w-10 h-10 rounded object-cover shadow"
+                                      />
+                                      {isCurrent && isPlaying && (
+                                        <div className="absolute inset-0 bg-black/40 rounded flex items-center justify-center text-[#1db954]">
+                                          <Play className="w-4 h-4 fill-current" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col min-w-0 pr-2">
+                                      <span className={`text-sm font-medium truncate ${isCurrent ? 'text-[#1db954]' : 'text-white'}`}>
+                                        {t.title}
+                                      </span>
+                                      <span className="text-xs text-[#a7a7a7] truncate hover:underline">
+                                        {t.artist}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <button
+                                      id={`btn-search-like-${t.id}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleLike(t);
+                                      }}
+                                      className="p-1.5 text-[#a7a7a7] hover:text-white"
+                                    >
+                                      <Heart className={`w-4 h-4 ${likedTrackIds.includes(t.id) ? 'text-[#1db954] fill-[#1db954]' : ''}`} />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* "MORE BY ARTIST" SECTION */}
+                  {categorizedSearch?.moreByArtist && categorizedSearch.moreByArtist.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg sm:text-xl font-bold text-white">
+                          More by {categorizedSearch.topResult?.artist}
+                        </h3>
+                        <span className="text-xs text-[#a7a7a7]">Official Tracks</span>
+                      </div>
+                      <TrackTable
+                        tracks={categorizedSearch.moreByArtist}
+                        currentTrack={currentTrack}
+                        isPlaying={isPlaying}
+                        likedTrackIds={likedTrackIds}
+                        onSelectTrack={(t) => handleSelectTrack(t, categorizedSearch.allTracks)}
+                        onTogglePlay={handleTogglePlay}
+                        onToggleLike={handleToggleLike}
+                        onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                      />
+                    </div>
+                  )}
+
+                  {/* "FANS ALSO LIKE / SIMILAR VIBE" SECTION */}
+                  {categorizedSearch?.similarVibe && categorizedSearch.similarVibe.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg sm:text-xl font-bold text-white">
+                          Similar Vibe & Recommendations
+                        </h3>
+                        <span className="text-xs text-[#a7a7a7]">Curated for you</span>
+                      </div>
+                      <TrackTable
+                        tracks={categorizedSearch.similarVibe}
+                        currentTrack={currentTrack}
+                        isPlaying={isPlaying}
+                        likedTrackIds={likedTrackIds}
+                        onSelectTrack={(t) => handleSelectTrack(t, categorizedSearch.allTracks)}
+                        onTogglePlay={handleTogglePlay}
+                        onToggleLike={handleToggleLike}
+                        onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                      />
+                    </div>
+                  )}
+
+                  {/* FALLBACK / ALL RESULTS TABLE */}
+                  {(!categorizedSearch?.topResult || (!categorizedSearch.moreByArtist?.length && !categorizedSearch.similarVibe?.length)) && (
+                    <div>
+                      <TrackTable
+                        tracks={searchResults}
+                        currentTrack={currentTrack}
+                        isPlaying={isPlaying}
+                        likedTrackIds={likedTrackIds}
+                        onSelectTrack={(t) => handleSelectTrack(t, searchResults)}
+                        onTogglePlay={handleTogglePlay}
+                        onToggleLike={handleToggleLike}
+                        onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div>
