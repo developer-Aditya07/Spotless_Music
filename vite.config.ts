@@ -19,36 +19,69 @@ function extractArtistAlbumDuration(runs: any[]) {
   let durationSec = 210;
   if (!runs || !Array.isArray(runs)) return { artist: 'Various Artists', album, durationSec };
 
-  const meaningful: { text: string; pageType?: string }[] = [];
-  for (const r of runs) {
-    const txt = r.text ? r.text.trim() : '';
-    if (!txt || txt === '•') continue;
+  // 1. Extract duration by scanning backward from the end (avoids misidentifying titles like "9:45" as duration)
+  for (let i = runs.length - 1; i >= 0; i--) {
+    const txt = runs[i].text ? runs[i].text.trim() : '';
     if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(txt)) {
       durationSec = parseDurationText(txt);
-      continue;
+      break;
     }
-    if (/^\d+(\.\d+)?(K|M|B)?\s*(views|plays|subscribers)$/i.test(txt)) continue;
-    if (/^(Song|Video|Single|Album|EP|Artist|Playlist|Podcast|Episode)$/i.test(txt)) continue;
-    if (/^\d{4}$/.test(txt)) continue;
-
-    const pageType = r.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
-    meaningful.push({ text: txt, pageType });
   }
 
-  const artistItem = meaningful.find((m) => m.pageType === 'MUSIC_PAGE_TYPE_ARTIST');
-  const albumItem = meaningful.find((m) => m.pageType === 'MUSIC_PAGE_TYPE_ALBUM');
+  // 2. Identify bullet "•" separators
+  const bulletIndices: number[] = [];
+  runs.forEach((r, idx) => {
+    if (r.text?.trim() === '•') bulletIndices.push(idx);
+  });
 
-  if (artistItem) {
-    artist = artistItem.text;
-  } else if (meaningful.length >= 1) {
-    artist = meaningful[0].text;
+  if (bulletIndices.length > 0) {
+    // Section before first bullet contains artist(s)
+    const artistRuns = runs.slice(0, bulletIndices[0]);
+    const artistText = artistRuns.map((r) => r.text || '').join('').trim();
+    if (artistText && !/^(Song|Video|Single|Album|EP|Artist|Playlist|Podcast|Episode)$/i.test(artistText)) {
+      artist = artistText;
+    }
+
+    // Section between first and second bullet is usually the album/single
+    if (bulletIndices.length >= 2) {
+      const albumRuns = runs.slice(bulletIndices[0] + 1, bulletIndices[1]);
+      const albumText = albumRuns.map((r) => r.text || '').join('').trim();
+      if (albumText && !/^\d{1,2}:\d{2}/.test(albumText) && !/^\d+(\.\d+)?(K|M|B)?\s*(views|plays)/i.test(albumText)) {
+        album = albumText;
+      }
+    }
   }
 
-  if (albumItem) {
-    album = albumItem.text;
-  } else if (meaningful.length >= 2) {
-    const nonArtist = meaningful.filter((m) => m.text !== artist);
-    if (nonArtist.length > 0) album = nonArtist[0].text;
+  // Fallback extraction if no bullets were present
+  if (!artist) {
+    const meaningful: { text: string; pageType?: string }[] = [];
+    for (const r of runs) {
+      const txt = r.text ? r.text.trim() : '';
+      if (!txt || txt === '•') continue;
+      if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(txt)) continue;
+      if (/^\d+(\.\d+)?(K|M|B)?\s*(views|plays|subscribers)$/i.test(txt)) continue;
+      if (/^(Song|Video|Single|Album|EP|Artist|Playlist|Podcast|Episode)$/i.test(txt)) continue;
+      if (/^\d{4}$/.test(txt)) continue;
+
+      const pageType = r.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+      meaningful.push({ text: txt, pageType });
+    }
+
+    const artistItem = meaningful.find((m) => m.pageType === 'MUSIC_PAGE_TYPE_ARTIST');
+    const albumItem = meaningful.find((m) => m.pageType === 'MUSIC_PAGE_TYPE_ALBUM');
+
+    if (artistItem) {
+      artist = artistItem.text;
+    } else if (meaningful.length >= 1) {
+      artist = meaningful[0].text;
+    }
+
+    if (albumItem) {
+      album = albumItem.text;
+    } else if (meaningful.length >= 2) {
+      const nonArtist = meaningful.filter((m) => m.text !== artist);
+      if (nonArtist.length > 0) album = nonArtist[0].text;
+    }
   }
 
   return { artist: artist || 'Various Artists', album, durationSec };
@@ -57,40 +90,84 @@ function extractArtistAlbumDuration(runs: any[]) {
 function cleanTitleAndArtist(rawTitle: string, channelArtist?: string) {
   if (!rawTitle) return { title: 'Unknown Title', artist: channelArtist || 'Unknown Artist' };
   
-  let text = rawTitle.replace(/(&quot;|&#39;|&amp;)/g, (m) => (m === '&quot;' ? '"' : m === '&#39;' ? "'" : '&')).trim();
-  let artist = (channelArtist || 'Unknown Artist').replace(/\s*-\s*Topic$/i, '').trim();
+  const text = rawTitle.replace(/(&quot;|&#39;|&amp;)/g, (m) => (m === '&quot;' ? '"' : m === '&#39;' ? "'" : '&')).trim();
+  let artist = (channelArtist || '').replace(/\s*-\s*Topic$/i, '').trim();
   let title = text;
 
-  // Many YouTube music videos are titled "Artist - Song Name" or "Artist: Song Name"
-  const splitMatch = text.match(/^(.+?)\s*[-–—:]\s*(.+)$/);
-  if (splitMatch && splitMatch[1].trim().length > 0 && splitMatch[2].trim().length > 0) {
-    const candidateArtist = splitMatch[1].trim();
-    const candidateTitle = splitMatch[2].trim();
-    if (candidateArtist.length <= 40 && !candidateArtist.toLowerCase().includes('playlist')) {
-      artist = candidateArtist;
-      title = candidateTitle;
+  const isGenericArtist = !artist || /^(unknown\s*artist|various\s*artists|artist|topic)$/i.test(artist);
+
+  if (!isGenericArtist) {
+    const esc = artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const artistPrefixRegex = new RegExp(`^${esc}\\s*[-–—:]\\s*`, 'i');
+    if (artistPrefixRegex.test(title)) {
+      title = title.replace(artistPrefixRegex, '').trim();
+    }
+  } else {
+    // Only split on space-padded separator ` - `, ` – `, ` — `, or `: ` outside parentheses
+    // Never split unpadded hyphens inside words like "Lo-Fi", "Sci-Fi", or "9:45"
+    const splitMatch = title.match(/^(.+?)\s+(?:[-–—]|\:)\s+(.+)$/);
+    if (splitMatch) {
+      const candidateArtist = splitMatch[1].trim();
+      const candidateTitle = splitMatch[2].trim();
+      const openArtist = (candidateArtist.match(/\(/g) || []).length;
+      const closeArtist = (candidateArtist.match(/\)/g) || []).length;
+      const openTitle = (candidateTitle.match(/\(/g) || []).length;
+      const closeTitle = (candidateTitle.match(/\)/g) || []).length;
+
+      if (
+        openArtist === closeArtist &&
+        openTitle === closeTitle &&
+        candidateArtist.length <= 40 &&
+        !candidateArtist.toLowerCase().includes('playlist')
+      ) {
+        artist = candidateArtist;
+        title = candidateTitle;
+      }
     }
   }
 
+  if (!artist) {
+    artist = 'Various Artists';
+  }
+
+  // Strip promotional pipe suffixes (e.g. "| Mirzapur The Movie | In Cinemas...")
+  title = title.replace(/\s*\|\s*.*$/g, '');
+
   // Strip YouTube parenthetical/bracket tags: (Official Music Video), [Audio], (Lyrics), etc.
+  // Note: keeps stylistic genre tags like (Lo-Fi) or (Slowed + Reverb) intact!
   title = title
-    .replace(/\s*(?:\[|\()(?:official\s*(?:video|audio|music\s*video|lyric\s*video|hd|hq|4k|visualizer)?|music\s*video|lyric\s*video|lyrics|hd|hq|4k|visualizer|remastered|remaster|radio\s*edit|original\s*mix|best\s*audio|pseudo\s*video|explicit)[^\]\)]*(?:\]|\))/gi, '')
-    .replace(/\s*[-–—:]\s*(?:official\s*(?:video|audio|music\s*video|lyric\s*video|lyrics|hd|hq|visualizer|remastered)?).*/gi, '')
+    .replace(/\s*(?:\[|\()(?:official\s*(?:video|audio|music\s*video|lyric\s*video|hd|hq|4k|visualizer)?|music\s*video|lyric\s*video|lyrics|hd|hq|4k|visualizer|remastered|remaster|radio\s*edit|original\s*mix|best\s*audio|pseudo\s*video|explicit|audio|full\s*song|in\s*cinemas)[^\]\)]*(?:\]|\))/gi, '')
+    .replace(/\s*[-–—:]\s*(?:official\s*(?:video|audio|music\s*video|lyric\s*video|lyrics|hd|hq|visualizer|remastered|full\s*song)?).*/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+
+  if (!title) {
+    title = text;
+  }
 
   return { title, artist };
 }
 
-function cleanRadioTrackTitle(rawTitle: string) {
+function cleanRadioTrackTitle(rawTitle: string, artist?: string) {
   if (!rawTitle) return 'Unknown Title';
-  return rawTitle
+  let t = rawTitle
     .replace(/(&quot;|&#39;|&amp;)/g, (m) => (m === '&quot;' ? '"' : m === '&#39;' ? "'" : '&'))
+    .replace(/\s*\|\s*.*$/g, '')
     .replace(/\s*(?:explicit\s*version\s*\/?\s*closed\s*captioned|closed\s*captioned|explicit\s*version)/gi, '')
-    .replace(/\s*(?:\[|\()(?:official\s*(?:video|audio|music\s*video|lyric\s*video|hd|hq|4k|visualizer)?|music\s*video|lyric\s*video|lyrics|hd|hq|4k|visualizer|remastered|remaster|radio\s*edit|original\s*mix|best\s*audio|pseudo\s*video|explicit|audio)[^\]\)]*(?:\]|\))/gi, '')
-    .replace(/\s*[-–—:]\s*(?:official\s*(?:video|audio|music\s*video|lyric\s*video|lyrics|hd|hq|visualizer|remastered)?).*/gi, '')
+    .replace(/\s*(?:\[|\()(?:official\s*(?:video|audio|music\s*video|lyric\s*video|hd|hq|4k|visualizer)?|music\s*video|lyric\s*video|lyrics|hd|hq|4k|visualizer|remastered|remaster|radio\s*edit|original\s*mix|best\s*audio|pseudo\s*video|explicit|audio|full\s*song|in\s*cinemas)[^\]\)]*(?:\]|\))/gi, '')
+    .replace(/\s*[-–—:]\s*(?:official\s*(?:video|audio|music\s*video|lyric\s*video|lyrics|hd|hq|visualizer|remastered|full\s*song)?).*/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+
+  if (artist && artist !== 'Unknown Artist' && artist !== 'Various Artists') {
+    const esc = artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pfx = new RegExp(`^${esc}\\s*[-–—:]\\s*`, 'i');
+    if (pfx.test(t)) {
+      t = t.replace(pfx, '').trim();
+    }
+  }
+
+  return t || rawTitle;
 }
 
 async function handleYouTubeRadio(videoId: string, query?: string, apiKey?: string) {
@@ -151,7 +228,7 @@ async function handleYouTubeRadio(videoId: string, query?: string, apiKey?: stri
           const durationSec = parseDurationText(durationStr);
           if (durationSec > 720) continue; // Filter out extended 1h loops/mixes
 
-          const cleanTitle = cleanRadioTrackTitle(rawTitle);
+          const cleanTitle = cleanRadioTrackTitle(rawTitle, artist);
           const thumbnail =
             v.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
             `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;

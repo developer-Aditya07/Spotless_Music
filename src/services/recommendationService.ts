@@ -1,5 +1,5 @@
 import { Track, Playlist } from '../types';
-import { searchYouTubeMusic } from './youtubeService';
+import { searchYouTubeMusic, fetchYouTubeRadio } from './youtubeService';
 import { INITIAL_TRACKS } from '../data/musicData';
 
 // Analyzes history and extracts artist listening frequency
@@ -406,79 +406,86 @@ export async function searchTracksCategorized(
   const moreByArtist: Track[] = [];
   const similarVibe: Track[] = [];
 
-  // If top result is found, fetch real Spotify/YouTube Music-grade sections:
-  if (topResult && topResult.artist && !/^(video|song|single|various\s*artists)$/i.test(topResult.artist.trim())) {
-    const artistName = topResult.artist;
+  // If top result is found with a videoId, fetch genuine YouTube Music watch-next recommendations
+  if (topResult && topResult.youtubeVideoId) {
+    const artistName = topResult.artist || '';
     const artistLower = artistName.toLowerCase();
+    const isGenericArtist = !artistName || /^(video|song|single|various\s*artists)$/i.test(artistName.trim());
 
-    // 1. "More by [Artist]" -> Search official audio for top artist
+    // 1. Fetch authentic YouTube Music Watch-Next / Radio recommendations for this exact track!
+    // This gives genuine matching-vibe tracks (e.g. Haryanvi/Desi hip-hop for Russian Bandana)
+    // rather than naive text search which matches words like "Russian"!
     try {
-      const artistTracks = await searchYouTubeMusic(`${artistName} official audio`, apiKey);
-      for (const t of artistTracks) {
+      const radioTracks = await fetchYouTubeRadio(topResult.youtubeVideoId, undefined, apiKey);
+
+      for (const t of radioTracks) {
         if (t.duration > 600 && !isExplicitLong) continue;
+        if (seenVideoIds.has(t.youtubeVideoId)) continue;
+
         const norm = normalizeSongTitle(t.title);
-        let isDup = seenVideoIds.has(t.youtubeVideoId);
+        let isDup = false;
         for (const seen of seenSongKeys) {
           if (seen === norm || areTitlesEffectivelySame(t.title, seen)) {
             isDup = true;
             break;
           }
         }
-        if (!isDup) {
+        if (isDup) continue;
+
+        const isSameArtist =
+          !isGenericArtist &&
+          (t.artist.toLowerCase().includes(artistLower) || artistLower.includes(t.artist.toLowerCase()));
+
+        if (isSameArtist && moreByArtist.length < 6) {
           seenVideoIds.add(t.youtubeVideoId);
           seenSongKeys.add(norm || t.title);
           moreByArtist.push(t);
-        }
-        if (moreByArtist.length >= 6) break;
-      }
-    } catch (e) {
-      console.warn('Error fetching more by artist:', e);
-    }
-
-    // 2. "Similar Vibe / Fans Also Like"
-    let relatedArtists: string[] = [];
-    for (const [key, list] of Object.entries(ARTIST_VIBE_MAP)) {
-      if (artistLower.includes(key) || key.includes(artistLower)) {
-        relatedArtists = list;
-        break;
-      }
-    }
-
-    const recoQuery = relatedArtists.length > 0
-      ? `${relatedArtists[0]} official audio`
-      : `${topResult.title} radio`;
-
-    try {
-      const recoTracks = await searchYouTubeMusic(recoQuery, apiKey);
-      for (const t of recoTracks) {
-        if (t.duration > 600 && !isExplicitLong) continue;
-        const norm = normalizeSongTitle(t.title);
-        let isDup = seenVideoIds.has(t.youtubeVideoId);
-        for (const seen of seenSongKeys) {
-          if (seen === norm || areTitlesEffectivelySame(t.title, seen)) {
-            isDup = true;
-            break;
-          }
-        }
-        if (!isDup) {
+        } else if (!isSameArtist && similarVibe.length < 8) {
           seenVideoIds.add(t.youtubeVideoId);
           seenSongKeys.add(norm || t.title);
           similarVibe.push(t);
         }
-        if (similarVibe.length >= 6) break;
       }
-    } catch (e) {
-      console.warn('Error fetching similar vibe tracks:', e);
+    } catch (err) {
+      console.warn('Error fetching YouTube radio recommendations for similar vibe:', err);
     }
 
-    // Complement from initial catalog if needed
+    // 2. Ensure "More by [Artist]" has enough tracks (up to 6) by searching artist catalog if needed
+    if (!isGenericArtist && moreByArtist.length < 5) {
+      try {
+        const artistTracks = await searchYouTubeMusic(`${artistName} official audio`, apiKey);
+        for (const t of artistTracks) {
+          if (t.duration > 600 && !isExplicitLong) continue;
+          if (seenVideoIds.has(t.youtubeVideoId)) continue;
+
+          const norm = normalizeSongTitle(t.title);
+          let isDup = false;
+          for (const seen of seenSongKeys) {
+            if (seen === norm || areTitlesEffectivelySame(t.title, seen)) {
+              isDup = true;
+              break;
+            }
+          }
+          if (!isDup) {
+            seenVideoIds.add(t.youtubeVideoId);
+            seenSongKeys.add(norm || t.title);
+            moreByArtist.push(t);
+          }
+          if (moreByArtist.length >= 6) break;
+        }
+      } catch (e) {
+        console.warn('Error fetching additional tracks by artist:', e);
+      }
+    }
+
+    // 3. Fallback for similarVibe if needed (e.g. offline / network issues)
     if (similarVibe.length < 4) {
       for (const local of INITIAL_TRACKS) {
         if (!seenVideoIds.has(local.youtubeVideoId) && !areTitlesEffectivelySame(local.title, topResult.title)) {
           seenVideoIds.add(local.youtubeVideoId);
           similarVibe.push(local);
         }
-        if (similarVibe.length >= 5) break;
+        if (similarVibe.length >= 6) break;
       }
     }
   }
