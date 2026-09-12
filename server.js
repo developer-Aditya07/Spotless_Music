@@ -328,13 +328,13 @@ async function handleYouTubeRadio(videoId, query, apiKey) {
           if (v.videoId === videoId) continue; // Skip seed track
 
           const rawTitle = v.title?.runs?.[0]?.text || '';
-          let artist = v.shortBylineText?.runs?.[0]?.text;
-          if (!artist) {
-            const artistRun = v.longBylineText?.runs?.find(
-              (r) =>
-                r.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === 'MUSIC_PAGE_TYPE_ARTIST'
-            );
-            artist = artistRun?.text || v.longBylineText?.runs?.[0]?.text || 'Various Artists';
+          let artist = '';
+          if (v.shortBylineText?.runs && v.shortBylineText.runs.length > 0) {
+            artist = v.shortBylineText.runs.map((r) => r.text || '').join('').trim();
+          } else if (v.longBylineText?.runs) {
+            const bulletIdx = v.longBylineText.runs.findIndex((r) => r.text && r.text.includes('•'));
+            const artistRuns = bulletIdx !== -1 ? v.longBylineText.runs.slice(0, bulletIdx) : v.longBylineText.runs;
+            artist = artistRuns.map((r) => r.text || '').join('').trim();
           }
           artist = (artist || 'Various Artists').replace(/\s*-\s*Topic$/i, '').trim();
 
@@ -352,7 +352,7 @@ async function handleYouTubeRadio(videoId, query, apiKey) {
             id: `yt-${v.videoId}`,
             title: cleanTitle,
             artist: artist,
-            album: 'YouTube Music Up Next',
+            album: cleanTitle,
             duration: durationSec,
             coverUrl: thumbnail,
             youtubeVideoId: v.videoId,

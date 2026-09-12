@@ -436,11 +436,11 @@ export async function searchTracksCategorized(
           !isGenericArtist &&
           (t.artist.toLowerCase().includes(artistLower) || artistLower.includes(t.artist.toLowerCase()));
 
-        if (isSameArtist && moreByArtist.length < 6) {
+        if (isSameArtist && moreByArtist.length < 8) {
           seenVideoIds.add(t.youtubeVideoId);
           seenSongKeys.add(norm || t.title);
           moreByArtist.push(t);
-        } else if (!isSameArtist && similarVibe.length < 8) {
+        } else if (!isSameArtist && similarVibe.length < 12) {
           seenVideoIds.add(t.youtubeVideoId);
           seenSongKeys.add(norm || t.title);
           similarVibe.push(t);
@@ -450,7 +450,7 @@ export async function searchTracksCategorized(
       console.warn('Error fetching YouTube radio recommendations for similar vibe:', err);
     }
 
-    // 2. Ensure "More by [Artist]" has enough tracks (up to 6) by searching artist catalog if needed
+    // 2. Ensure "More by [Artist]" has enough tracks (up to 8) by searching artist catalog if needed
     if (!isGenericArtist && moreByArtist.length < 5) {
       try {
         const artistTracks = await searchYouTubeMusic(`${artistName} official audio`, apiKey);
@@ -471,31 +471,48 @@ export async function searchTracksCategorized(
             seenSongKeys.add(norm || t.title);
             moreByArtist.push(t);
           }
-          if (moreByArtist.length >= 6) break;
+          if (moreByArtist.length >= 8) break;
         }
       } catch (e) {
         console.warn('Error fetching additional tracks by artist:', e);
       }
     }
 
-    // 3. Fallback for similarVibe if needed (e.g. offline / network issues)
-    if (similarVibe.length < 4) {
-      for (const local of INITIAL_TRACKS) {
-        if (!seenVideoIds.has(local.youtubeVideoId) && !areTitlesEffectivelySame(local.title, topResult.title)) {
-          seenVideoIds.add(local.youtubeVideoId);
-          similarVibe.push(local);
+    // 3. Fallback for similarVibe if needed: query YouTube for related music, NEVER static local catalog
+    if (similarVibe.length < 5) {
+      try {
+        const queryTerm = !isGenericArtist ? `${artistName} radio` : `${topResult.title} song`;
+        const ytFallback = await searchYouTubeMusic(queryTerm, apiKey);
+        for (const t of ytFallback) {
+          if (t.duration > 600 && !isExplicitLong) continue;
+          if (seenVideoIds.has(t.youtubeVideoId)) continue;
+          const norm = normalizeSongTitle(t.title);
+          let isDup = false;
+          for (const seen of seenSongKeys) {
+            if (seen === norm || areTitlesEffectivelySame(t.title, seen)) {
+              isDup = true;
+              break;
+            }
+          }
+          if (!isDup) {
+            seenVideoIds.add(t.youtubeVideoId);
+            seenSongKeys.add(norm || t.title);
+            similarVibe.push(t);
+          }
+          if (similarVibe.length >= 10) break;
         }
-        if (similarVibe.length >= 6) break;
+      } catch (err) {
+        console.warn('Fallback YouTube search error for similar vibe:', err);
       }
     }
   }
 
-  // All tracks unified list for seamless sequential playback
+  // All tracks unified list for seamless sequential playback (Top Result -> Songs -> Similar Vibe -> More by Artist)
   const allTracks: Track[] = [];
   if (topResult) allTracks.push(topResult);
   allTracks.push(...songs);
-  allTracks.push(...moreByArtist);
   allTracks.push(...similarVibe);
+  allTracks.push(...moreByArtist);
 
   return {
     topResult,

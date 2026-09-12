@@ -112,19 +112,14 @@ export const youtubeMusicProvider: MusicProvider = {
       }
     }
 
-    // 3. Add in-memory local catalog matches ONLY if pool is empty (offline / API error fallback)
+    // 3. Fallback if pool is empty: query YouTube for artist or song radio, never unrelated static tracks
     if (pool.length === 0) {
-      for (const local of INITIAL_TRACKS) {
-        if (local.id !== currentTrack.id && local.youtubeVideoId !== currentTrack.youtubeVideoId) {
-          const isSameArtist = local.artist.toLowerCase().includes(artistLower);
-          const isRelated = relatedArtists.some((r) => local.artist.toLowerCase().includes(r.toLowerCase()));
-          if (isSameArtist || isRelated) {
-            pool.push(local);
-          }
-        }
-      }
-      if (pool.length === 0) {
-        pool.push(...INITIAL_TRACKS.filter((t) => t.id !== currentTrack.id));
+      try {
+        const fallbackQuery = currentTrack.artist ? `${currentTrack.artist} radio` : `${currentTrack.title} song`;
+        const ytFallback = await searchYouTubeMusic(fallbackQuery, apiKey);
+        pool.push(...ytFallback.filter((t) => t.youtubeVideoId !== currentTrack.youtubeVideoId));
+      } catch (err) {
+        console.warn('Fallback search in provider failed:', err);
       }
     }
 
@@ -407,8 +402,8 @@ export async function generateSmartRadioQueue(
       candidatePool = await youtubeMusicProvider.getRelatedCandidates(currentTrack, mode, apiKey);
       recommendationCache.set(cacheKey, { timestamp: now, tracks: candidatePool });
     } catch (e) {
-      console.warn('Provider failed to fetch radio candidates, using catalog fallback:', e);
-      candidatePool = INITIAL_TRACKS;
+      console.warn('Provider failed to fetch radio candidates:', e);
+      candidatePool = [];
     }
   }
 
