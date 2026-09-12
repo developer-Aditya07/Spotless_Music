@@ -50,8 +50,36 @@ export interface PlayerState {
   likedTrackIds: string[];
 }
 
+export type RadioMode = 'normal' | 'artist' | 'song' | 'discovery';
+
+export interface RecommendationScoreBreakdown {
+  trackId: string;
+  title: string;
+  artist: string;
+  providerScore: number;
+  similarityScore: number;
+  personalPreferenceScore: number;
+  artistPreferenceScore: number;
+  noveltyScore: number;
+  explorationScore: number;
+  popularityScore: number;
+  versionPenalty: number;
+  repetitionPenalty: number;
+  skipPenalty: number;
+  finalScore: number;
+}
+
 export interface UserSettings {
   youtubeApiKey: string;
   audioQuality: 'auto' | 'high' | 'normal';
   normalizeVolume: boolean;
+}
+
+export interface UserListeningProfile {
+  topArtists: Record<string, number>;
+  artistAffinity: Record<string, number>;
+  skipScore: Record<string, number>; // songId or normTitle -> penalty count
+  completedPercentMap: Record<string, number>; // songId -> average completion
+  playCountMap: Record<string, number>;
+  dislikedTrackIds: string[];
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, Heart, Clock, PlusCircle } from 'lucide-react';
+import { Play, Pause, Heart, Clock, PlusCircle, Radio, ListPlus } from 'lucide-react';
 import { Track } from '../types';
 
 interface TrackTableProps {
@@ -11,6 +11,8 @@ interface TrackTableProps {
   onTogglePlay: () => void;
   onToggleLike: (track: Track) => void;
   onAddToPlaylist?: (track: Track) => void;
+  onAddToQueue?: (track: Track) => void;
+  onStartRadio?: (track: Track) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -28,6 +30,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   onTogglePlay,
   onToggleLike,
   onAddToPlaylist,
+  onAddToQueue,
+  onStartRadio,
 }) => {
   return (
     <div id="spotify-track-table-container" className="w-full text-sm select-none">
@@ -102,6 +106,32 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {onStartRadio && (
+                    <button
+                      id={`btn-mobile-radio-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartRadio(track);
+                      }}
+                      className="p-1.5 text-[#a7a7a7] hover:text-[#1db954] active:scale-90 transition-transform"
+                      title="Start Radio"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onAddToQueue && (
+                    <button
+                      id={`btn-mobile-queue-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToQueue(track);
+                      }}
+                      className="p-1.5 text-[#a7a7a7] hover:text-white active:scale-90 transition-transform"
+                      title="Add to queue"
+                    >
+                      <ListPlus className="w-4 h-4" />
+                    </button>
+                  )}
                   {onAddToPlaylist && (
                     <button
                       id={`btn-mobile-add-pl-${track.id}`}
@@ -212,6 +242,34 @@ export const TrackTable: React.FC<TrackTableProps> = ({
 
                 {/* Col 5: Duration & Like & Add to Playlist */}
                 <div className="flex items-center justify-end gap-2 text-xs text-[#b3b3b3] pr-4">
+                  {onStartRadio && (
+                    <button
+                      id={`btn-radio-row-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartRadio(track);
+                      }}
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:text-[#1db954] transition-opacity"
+                      title="Start Smart Radio"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {onAddToQueue && (
+                    <button
+                      id={`btn-queue-row-${track.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToQueue(track);
+                      }}
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+                      title="Add to queue"
+                    >
+                      <ListPlus className="w-4 h-4" />
+                    </button>
+                  )}
+
                   {onAddToPlaylist && (
                     <button
                       id={`btn-add-pl-row-${track.id}`}

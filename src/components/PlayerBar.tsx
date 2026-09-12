@@ -13,6 +13,9 @@ import {
   Mic2,
   ListMusic,
   Heart,
+  ThumbsDown,
+  Radio,
+  Sparkles,
   Maximize2,
   Minimize2,
   ChevronDown,
@@ -30,6 +33,8 @@ interface PlayerBarProps {
   isShuffle: boolean;
   repeatMode: RepeatMode;
   isLiked: boolean;
+  isDisliked?: boolean;
+  isSmartRadioActive?: boolean;
   isLyricsOpen: boolean;
   isQueueOpen: boolean;
   isFullscreen: boolean;
@@ -39,6 +44,8 @@ interface PlayerBarProps {
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onToggleLike: (track: Track) => void;
+  onToggleDislike?: (track: Track) => void;
+  onStartRadio?: (track: Track) => void;
   onSeek: (seconds: number) => void;
   onVolumeChange: (val: number) => void;
   onToggleMute: () => void;
@@ -64,6 +71,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   isShuffle,
   repeatMode,
   isLiked,
+  isDisliked = false,
+  isSmartRadioActive = true,
   isLyricsOpen,
   isQueueOpen,
   isFullscreen,
@@ -73,6 +82,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleShuffle,
   onToggleRepeat,
   onToggleLike,
+  onToggleDislike,
+  onStartRadio,
   onSeek,
   onVolumeChange,
   onToggleMute,
@@ -141,9 +152,40 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <h2 className="text-xl sm:text-2xl font-black text-white truncate leading-tight">
                   {currentTrack.title}
                 </h2>
-                <p className="text-sm sm:text-base text-[#b3b3b3] truncate mt-0.5 font-medium">
-                  {currentTrack.artist}
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-sm sm:text-base text-[#b3b3b3] truncate font-medium">
+                    {currentTrack.artist}
+                  </p>
+                  {isSmartRadioActive && (
+                    <span className="text-[10px] text-[#1db954] font-medium bg-[#1db954]/15 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>Radio</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {onToggleDislike && (
+                  <button
+                    onClick={() => onToggleDislike(currentTrack)}
+                    className={`p-2 transition-transform active:scale-90 ${
+                      isDisliked ? 'text-red-400' : 'text-white/60 hover:text-white'
+                    }`}
+                    title="Dislike"
+                  >
+                    <ThumbsDown className={`w-5 h-5 ${isDisliked ? 'fill-red-400' : ''}`} />
+                  </button>
+                )}
+                {onStartRadio && (
+                  <button
+                    onClick={() => onStartRadio(currentTrack)}
+                    className="p-2 text-white/60 hover:text-[#1db954] transition-colors"
+                    title="Start Smart Radio"
+                  >
+                    <Radio className="w-5 h-5" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -348,21 +390,54 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </span>
                 <span
                   id="player-track-artist"
-                  className="text-xs text-[#b3b3b3] truncate hover:underline cursor-pointer"
+                  className="text-xs text-[#b3b3b3] truncate hover:underline cursor-pointer flex items-center gap-1.5"
                 >
-                  {currentTrack.artist}
+                  <span>{currentTrack.artist}</span>
+                  {isSmartRadioActive && (
+                    <span className="text-[10px] text-[#1db954] font-medium bg-[#1db954]/10 px-1 py-0.2 rounded flex items-center gap-0.5">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>Radio</span>
+                    </span>
+                  )}
                 </span>
               </div>
-              <button
-                id="btn-player-like"
-                onClick={() => onToggleLike(currentTrack)}
-                className={`p-1.5 transition-transform active:scale-90 ${
-                  isLiked ? 'text-[#1db954]' : 'text-[#b3b3b3] hover:text-white'
-                }`}
-                title={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
-              >
-                <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#1db954]' : ''}`} />
-              </button>
+
+              <div className="flex items-center gap-0.5">
+                <button
+                  id="btn-player-like"
+                  onClick={() => onToggleLike(currentTrack)}
+                  className={`p-1.5 transition-transform active:scale-90 ${
+                    isLiked ? 'text-[#1db954]' : 'text-[#b3b3b3] hover:text-white'
+                  }`}
+                  title={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs (Boosts recommendations)'}
+                >
+                  <Heart className={`w-4 h-4 ${isLiked ? 'fill-[#1db954]' : ''}`} />
+                </button>
+
+                {onToggleDislike && (
+                  <button
+                    id="btn-player-dislike"
+                    onClick={() => onToggleDislike(currentTrack)}
+                    className={`p-1.5 transition-transform active:scale-90 ${
+                      isDisliked ? 'text-red-400' : 'text-[#727272] hover:text-white'
+                    }`}
+                    title={isDisliked ? 'Remove Dislike' : 'Dislike (Reduces similar recommendations)'}
+                  >
+                    <ThumbsDown className={`w-4 h-4 ${isDisliked ? 'fill-red-400' : ''}`} />
+                  </button>
+                )}
+
+                {onStartRadio && (
+                  <button
+                    id="btn-player-start-radio"
+                    onClick={() => onStartRadio(currentTrack)}
+                    className="p-1.5 text-[#727272] hover:text-[#1db954] transition-colors"
+                    title="Start Smart Radio from this song"
+                  >
+                    <Radio className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <div className="text-xs text-[#727272]">Select a track to play ad-free</div>

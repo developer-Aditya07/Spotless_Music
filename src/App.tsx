@@ -10,9 +10,15 @@ import { QueueDrawer } from './components/QueueDrawer';
 import { SettingsModal } from './components/SettingsModal';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
 import { AddToPlaylistModal } from './components/AddToPlaylistModal';
-import { Track, Playlist, RepeatMode, UserSettings } from './types';
+import { Track, Playlist, RepeatMode, UserSettings, RadioMode, RecommendationScoreBreakdown, UserListeningProfile } from './types';
 import { INITIAL_TRACKS, INITIAL_PLAYLISTS, CATEGORIES } from './data/musicData';
 import { youtubePlayer, searchYouTubeMusic } from './services/youtubeService';
+import {
+  generateSmartRadioQueue,
+  INITIAL_USER_PROFILE,
+  normalizeSongTitle,
+  areTitlesEffectivelySame,
+} from './services/smartRadioEngine';
 import {
   generateSuggestedMixes,
   createSmartPlaylistFromHistory,
@@ -21,8 +27,6 @@ import {
   searchTracksWithRecommendations,
   searchTracksCategorized,
   SearchCategorizedResults,
-  normalizeSongTitle,
-  areTitlesEffectivelySame,
 } from './services/recommendationService';
 
 export const App: React.FC = () => {
@@ -68,6 +72,36 @@ export const App: React.FC = () => {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [queue, setQueue] = useState<Track[]>([]);
 
+  // YouTube Music-Style Smart Radio State
+  const [isSmartRadioEnabled, setIsSmartRadioEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('spotify_smart_radio_enabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  const [radioMode, setRadioMode] = useState<RadioMode>('normal');
+  const [radioQueue, setRadioQueue] = useState<Track[]>([]);
+  const [isLoadingRadio, setIsLoadingRadio] = useState(false);
+  const [debugScores, setDebugScores] = useState<RecommendationScoreBreakdown[]>([]);
+
+  // User Profile for Recommendation Engine (Taste Profile, Skips, Affinity)
+  const [listeningProfile, setListeningProfile] = useState<UserListeningProfile>(() => {
+    const saved = localStorage.getItem('spotify_listening_profile');
+    return saved ? JSON.parse(saved) : INITIAL_USER_PROFILE;
+  });
+
+  // Track the timestamp when the current song started playing to detect quick skips (< 30s)
+  const songStartedTimeRef = useRef<number>(Date.now());
+  const listeningProfileRef = useRef<UserListeningProfile>(listeningProfile);
+  listeningProfileRef.current = listeningProfile;
+
+  const isSmartRadioEnabledRef = useRef<boolean>(isSmartRadioEnabled);
+  isSmartRadioEnabledRef.current = isSmartRadioEnabled;
+
+  const radioModeRef = useRef<RadioMode>(radioMode);
+  radioModeRef.current = radioMode;
+
+  const radioQueueRef = useRef<Track[]>(radioQueue);
+  radioQueueRef.current = radioQueue;
+
   // Mutable refs to prevent stale closure in YouTube event callbacks
   const currentTrackRef = useRef<Track | null>(currentTrack);
   currentTrackRef.current = currentTrack;
@@ -84,7 +118,8 @@ export const App: React.FC = () => {
   const settingsRef = useRef<UserSettings>(settings);
   settingsRef.current = settings;
 
-  const contextTracksRef = useRef<Track[]>(INITIAL_TRACKS);
+  const contextTracksRef = useRef<Track[]>([]);
+  const isTransitioningRef = useRef<boolean>(false);
   const playedTrackIdsRef = useRef<Set<string>>(new Set([INITIAL_TRACKS[0].id, INITIAL_TRACKS[0].youtubeVideoId]));
   const handleNextTrackRef = useRef<() => void>(() => {});
 
@@ -128,6 +163,14 @@ export const App: React.FC = () => {
     localStorage.setItem('spotify_user_settings', JSON.stringify(settings));
   }, [settings]);
 
+  useEffect(() => {
+    localStorage.setItem('spotify_smart_radio_enabled', JSON.stringify(isSmartRadioEnabled));
+  }, [isSmartRadioEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('spotify_listening_profile', JSON.stringify(listeningProfile));
+  }, [listeningProfile]);
+
   // Setup YouTube audio sync
   useEffect(() => {
     youtubePlayer.setVolume(volume);
@@ -153,7 +196,12 @@ export const App: React.FC = () => {
         }
       } else if (state === 0) {
         // Song ended, automatically advance to next or play a song with a similar vibe
+        if (isTransitioningRef.current) return;
+        isTransitioningRef.current = true;
         handleNextTrackRef.current();
+        setTimeout(() => {
+          isTransitioningRef.current = false;
+        }, 1200);
       }
     });
   }, [volume]);
@@ -247,7 +295,24 @@ export const App: React.FC = () => {
   }, [searchQuery, settings.youtubeApiKey]);
 
   // Player controls
-  const handleSelectTrack = (track: Track, contextTracks?: Track[]) => {
+  const handleSelectTrack = (track: Track, contextTracks?: Track[], isAutoAdvance = false) => {
+    // Check if the previous track was skipped very quickly (< 30 seconds into playback)
+    const now = Date.now();
+    const prevTrack = currentTrackRef.current;
+    if (prevTrack && isPlaying && now - songStartedTimeRef.current < 30000) {
+      // Record quick skip signal for profile
+      const prevNorm = normalizeSongTitle(prevTrack.title);
+      setListeningProfile((prev) => ({
+        ...prev,
+        skipScore: {
+          ...prev.skipScore,
+          [prevTrack.id]: (prev.skipScore[prevTrack.id] || 0) + 1,
+          [prevNorm]: (prev.skipScore[prevNorm] || 0) + 1,
+        },
+      }));
+    }
+
+    songStartedTimeRef.current = now;
     setCurrentTrack(track);
     currentTrackRef.current = track;
     setCurrentTime(0);
@@ -265,15 +330,140 @@ export const App: React.FC = () => {
       playedTrackIdsRef.current.add(normTitle);
     }
 
+    // Update user profile with play counts and artist affinity
+    setListeningProfile((prev) => {
+      const currentArtist = track.artist;
+      return {
+        ...prev,
+        topArtists: {
+          ...prev.topArtists,
+          [currentArtist]: (prev.topArtists[currentArtist] || 0) + 1,
+        },
+        artistAffinity: {
+          ...prev.artistAffinity,
+          [currentArtist]: (prev.artistAffinity[currentArtist] || 0) + 1,
+        },
+        playCountMap: {
+          ...prev.playCountMap,
+          [track.id]: (prev.playCountMap[track.id] || 0) + 1,
+          [normTitle]: (prev.playCountMap[normTitle] || 0) + 1,
+        },
+      };
+    });
+
     if (contextTracks && contextTracks.length > 0) {
       contextTracksRef.current = contextTracks;
+    } else {
+      contextTracksRef.current = [];
     }
+    isTransitioningRef.current = false;
 
     // Record into watch/listening history (keep last 50, move current to top)
     setHistory((prev) => {
       const filtered = prev.filter((t) => t.id !== track.id && !areTitlesEffectivelySame(t.title, track.title));
       return [track, ...filtered].slice(0, 50);
     });
+
+    // Asynchronously pre-fetch YouTube-Music Up Next recommendations in the background.
+    // If auto-advancing and we already have tracks in the queue, avoid overwriting the existing Up Next queue.
+    if (isSmartRadioEnabledRef.current) {
+      if (!isAutoAdvance || radioQueueRef.current.length <= 4) {
+        prefetchSmartRadioQueue(track, radioModeRef.current, isAutoAdvance);
+      }
+    }
+  };
+
+  // Prefetch Smart Radio queue for candidate recommendations
+  const prefetchSmartRadioQueue = async (seedTrack: Track, mode: RadioMode, appendOnly = false) => {
+    setIsLoadingRadio(true);
+    try {
+      const result = await generateSmartRadioQueue(
+        seedTrack,
+        listeningProfileRef.current,
+        history,
+        queueRef.current,
+        mode,
+        settingsRef.current.youtubeApiKey
+      );
+      if (appendOnly) {
+        setRadioQueue((prev) => {
+          const seen = new Set(prev.map((p) => p.youtubeVideoId || p.id));
+          const fresh = result.tracks.filter((f) => !seen.has(f.youtubeVideoId || f.id));
+          const updated = [...prev, ...fresh];
+          radioQueueRef.current = updated;
+          return updated;
+        });
+      } else {
+        setRadioQueue(result.tracks);
+        radioQueueRef.current = result.tracks;
+      }
+      setDebugScores(result.debugScores);
+    } catch (err) {
+      console.warn('Smart radio prefetch failed:', err);
+    } finally {
+      setIsLoadingRadio(false);
+    }
+  };
+
+  const handleToggleSmartRadio = () => {
+    const nextVal = !isSmartRadioEnabled;
+    setIsSmartRadioEnabled(nextVal);
+    if (nextVal && currentTrack) {
+      prefetchSmartRadioQueue(currentTrack, radioMode);
+      showToast('Smart Radio enabled: continuous natural playback');
+    } else {
+      showToast('Smart Radio paused');
+    }
+  };
+
+  const handleChangeRadioMode = (mode: RadioMode) => {
+    setRadioMode(mode);
+    if (currentTrack) {
+      prefetchSmartRadioQueue(currentTrack, mode);
+    }
+    const modeNames: Record<RadioMode, string> = {
+      normal: 'Balanced Mix',
+      artist: 'Artist Radio',
+      song: 'Song Radio',
+      discovery: 'Discovery Mode',
+    };
+    showToast(`Switched to ${modeNames[mode]}`);
+  };
+
+  const handleStartRadio = (seedTrack: Track) => {
+    setIsSmartRadioEnabled(true);
+    setRadioMode('song');
+    handleSelectTrack(seedTrack);
+    prefetchSmartRadioQueue(seedTrack, 'song');
+    showToast(`Starting Radio based on "${seedTrack.title}"`);
+  };
+
+  const handleToggleDislike = (track: Track) => {
+    setListeningProfile((prev) => {
+      const exists = prev.dislikedTrackIds.includes(track.id);
+      const updatedDislikes = exists
+        ? prev.dislikedTrackIds.filter((id) => id !== track.id)
+        : [...prev.dislikedTrackIds, track.id];
+
+      return {
+        ...prev,
+        dislikedTrackIds: updatedDislikes,
+      };
+    });
+
+    const isNowDisliked = !listeningProfile.dislikedTrackIds.includes(track.id);
+    if (isNowDisliked) {
+      showToast(`We will recommend fewer songs like "${track.title}"`);
+      // If currently playing the disliked song, smoothly advance to next
+      if (currentTrack?.id === track.id) {
+        handleNextTrack();
+      } else {
+        // Filter out from existing radio queue
+        setRadioQueue((prev) => prev.filter((t) => t.id !== track.id));
+      }
+    } else {
+      showToast(`Removed dislike on "${track.title}"`);
+    }
   };
 
   const handleGeneratePlaylistFromHistory = async () => {
@@ -384,50 +574,115 @@ export const App: React.FC = () => {
           handleSelectTrack(nextInList, contextList);
           return;
         }
-      } else if (repeat === 'all' && contextList.length > 0) {
-        // Loop back to start of playlist
+      } else if (repeat === 'all' && contextList.length > 0 && !isSmartRadioEnabledRef.current) {
+        // Loop back to start of playlist ONLY if Smart Radio is turned off
         handleSelectTrack(contextList[0], contextList);
         return;
       }
     }
 
-    // 4. End of playlist, or single track completed -> AUTOPLAY SIMILAR VIBE TRACK
-    if (current) {
-      showToast(`Discovering music with a similar vibe to ${current.title}...`);
+    // 4. End of playlist, or single track completed -> SMART RADIO / UP-NEXT RECOMMENDATIONS
+    if (current && isSmartRadioEnabledRef.current) {
+      contextTracksRef.current = [];
 
+      // Check pre-fetched radio queue first (zero latency!)
+      // Filter radio queue for valid candidates that are strictly NOT the current song or its title
+      const validFromRadio = radioQueueRef.current.filter(
+        (t) =>
+          t.id !== current.id &&
+          t.youtubeVideoId !== current.youtubeVideoId &&
+          !areTitlesEffectivelySame(t.title, current.title) &&
+          !playedTrackIdsRef.current.has(t.id) &&
+          (!t.youtubeVideoId || !playedTrackIdsRef.current.has(t.youtubeVideoId)) &&
+          !playedTrackIdsRef.current.has(normalizeSongTitle(t.title))
+      );
+
+      if (validFromRadio.length > 0) {
+        const nextRadioTrack = validFromRadio[0];
+        const remainingRadio = radioQueueRef.current.filter(
+          (t) => t.id !== nextRadioTrack.id && t.youtubeVideoId !== nextRadioTrack.youtubeVideoId
+        );
+        setRadioQueue(remainingRadio);
+        radioQueueRef.current = remainingRadio;
+
+        // Mark as played to prevent repeating
+        playedTrackIdsRef.current.add(nextRadioTrack.id);
+        if (nextRadioTrack.youtubeVideoId) {
+          playedTrackIdsRef.current.add(nextRadioTrack.youtubeVideoId);
+        }
+        const normTitle = normalizeSongTitle(nextRadioTrack.title);
+        if (normTitle) {
+          playedTrackIdsRef.current.add(normTitle);
+        }
+
+        // If radio queue is running low (<= 3 tracks), prefetch more in the background asynchronously!
+        if (remainingRadio.length <= 3) {
+          generateSmartRadioQueue(
+            nextRadioTrack,
+            listeningProfileRef.current,
+            history,
+            queueRef.current,
+            radioModeRef.current,
+            settingsRef.current.youtubeApiKey
+          ).then((res) => {
+            setRadioQueue((prev) => {
+              const seen = new Set(prev.map((p) => p.youtubeVideoId || p.id));
+              const fresh = res.tracks.filter((f) => !seen.has(f.youtubeVideoId || f.id));
+              return [...prev, ...fresh];
+            });
+          }).catch((err) => console.warn('Replenishing radio queue error:', err));
+        }
+
+        showToast(`Playing Up Next: ${nextRadioTrack.title} • ${nextRadioTrack.artist}`);
+        handleSelectTrack(nextRadioTrack, undefined, true);
+        return;
+      }
+
+      // If radio queue wasn't pre-fetched yet or ran out, generate dynamically
+      showToast(`Loading Up Next for ${current.title}...`);
       try {
-        const similarTracks = await fetchSimilarVibeTracks(
+        const result = await generateSmartRadioQueue(
           current,
-          playedTrackIdsRef.current,
+          listeningProfileRef.current,
+          history,
+          queueRef.current,
+          radioModeRef.current,
           settingsRef.current.youtubeApiKey
         );
 
-        if (similarTracks && similarTracks.length > 0) {
-          const [nextVibeTrack, ...upcomingVibeTracks] = similarTracks;
+        const freshCandidates = result.tracks.filter(
+          (t) =>
+            t.id !== current.id &&
+            t.youtubeVideoId !== current.youtubeVideoId &&
+            !areTitlesEffectivelySame(t.title, current.title)
+        );
 
-          // Mark as played to prevent infinite looping
-          playedTrackIdsRef.current.add(nextVibeTrack.id);
-          if (nextVibeTrack.youtubeVideoId) {
-            playedTrackIdsRef.current.add(nextVibeTrack.youtubeVideoId);
+        if (freshCandidates.length > 0) {
+          const nextRadioTrack = freshCandidates[0];
+          const upcomingRadio = freshCandidates.slice(1);
+          setRadioQueue(upcomingRadio);
+          radioQueueRef.current = upcomingRadio;
+          setDebugScores(result.debugScores);
+
+          playedTrackIdsRef.current.add(nextRadioTrack.id);
+          if (nextRadioTrack.youtubeVideoId) {
+            playedTrackIdsRef.current.add(nextRadioTrack.youtubeVideoId);
           }
-          const normTitle = normalizeSongTitle(nextVibeTrack.title);
+          const normTitle = normalizeSongTitle(nextRadioTrack.title);
           if (normTitle) {
             playedTrackIdsRef.current.add(normTitle);
           }
 
-          // Pre-populate upcoming similar tracks into queue
-          if (upcomingVibeTracks.length > 0) {
-            setQueue(upcomingVibeTracks.slice(0, 4));
-          }
-
-          showToast(`Autoplaying similar vibe: ${nextVibeTrack.title} • ${nextVibeTrack.artist}`);
-          handleSelectTrack(nextVibeTrack, similarTracks);
+          showToast(`Playing Up Next: ${nextRadioTrack.title} • ${nextRadioTrack.artist}`);
+          handleSelectTrack(nextRadioTrack, undefined, true);
           return;
         }
       } catch (err) {
-        console.warn('Could not load similar vibe tracks:', err);
+        console.warn('Smart radio dynamic generation error:', err);
       }
+    }
 
+    if (current) {
       // Fallback: Pick an unplayed track from the catalog that is not the current song
       const unplayed = INITIAL_TRACKS.filter(
         (t) =>
@@ -921,7 +1176,7 @@ export const App: React.FC = () => {
                         <h3 className="text-lg font-bold text-white">Top result</h3>
                         <div
                           id={`top-result-card-${categorizedSearch.topResult.id}`}
-                          onClick={() => handleSelectTrack(categorizedSearch.topResult!, searchResults)}
+                          onClick={() => handleSelectTrack(categorizedSearch.topResult!)}
                           className="group relative p-5 rounded-xl bg-[#181818] hover:bg-[#282828] transition-colors cursor-pointer flex flex-col justify-between h-[220px]"
                         >
                           <div className="flex flex-col gap-3">
@@ -954,7 +1209,7 @@ export const App: React.FC = () => {
                                 if (currentTrack?.id === categorizedSearch.topResult!.id) {
                                   handleTogglePlay();
                                 } else {
-                                  handleSelectTrack(categorizedSearch.topResult!, searchResults);
+                                  handleSelectTrack(categorizedSearch.topResult!);
                                 }
                               }}
                               className="w-12 h-12 rounded-full bg-[#1db954] text-black flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-2 transition-all duration-200 hover:scale-105"
@@ -981,7 +1236,7 @@ export const App: React.FC = () => {
                                 <div
                                   key={t.id}
                                   id={`search-song-row-${t.id}`}
-                                  onClick={() => handleSelectTrack(t, searchResults)}
+                                  onClick={() => handleSelectTrack(t)}
                                   className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
                                 >
                                   <div className="flex items-center gap-3 min-w-0">
@@ -1042,10 +1297,15 @@ export const App: React.FC = () => {
                         currentTrack={currentTrack}
                         isPlaying={isPlaying}
                         likedTrackIds={likedTrackIds}
-                        onSelectTrack={(t) => handleSelectTrack(t, categorizedSearch.allTracks)}
+                        onSelectTrack={(t) => handleSelectTrack(t)}
                         onTogglePlay={handleTogglePlay}
                         onToggleLike={handleToggleLike}
                         onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                        onAddToQueue={(t) => {
+                          setQueue((prev) => [...prev, t]);
+                          showToast(`Added "${t.title}" to Queue`);
+                        }}
+                        onStartRadio={handleStartRadio}
                       />
                     </div>
                   )}
@@ -1064,10 +1324,15 @@ export const App: React.FC = () => {
                         currentTrack={currentTrack}
                         isPlaying={isPlaying}
                         likedTrackIds={likedTrackIds}
-                        onSelectTrack={(t) => handleSelectTrack(t, categorizedSearch.allTracks)}
+                        onSelectTrack={(t) => handleSelectTrack(t)}
                         onTogglePlay={handleTogglePlay}
                         onToggleLike={handleToggleLike}
                         onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                        onAddToQueue={(t) => {
+                          setQueue((prev) => [...prev, t]);
+                          showToast(`Added "${t.title}" to Queue`);
+                        }}
+                        onStartRadio={handleStartRadio}
                       />
                     </div>
                   )}
@@ -1080,10 +1345,15 @@ export const App: React.FC = () => {
                         currentTrack={currentTrack}
                         isPlaying={isPlaying}
                         likedTrackIds={likedTrackIds}
-                        onSelectTrack={(t) => handleSelectTrack(t, searchResults)}
+                        onSelectTrack={(t) => handleSelectTrack(t)}
                         onTogglePlay={handleTogglePlay}
                         onToggleLike={handleToggleLike}
                         onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                        onAddToQueue={(t) => {
+                          setQueue((prev) => [...prev, t]);
+                          showToast(`Added "${t.title}" to Queue`);
+                        }}
+                        onStartRadio={handleStartRadio}
                       />
                     </div>
                   )}
@@ -1183,6 +1453,11 @@ export const App: React.FC = () => {
                   onTogglePlay={handleTogglePlay}
                   onToggleLike={handleToggleLike}
                   onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                  onAddToQueue={(t) => {
+                    setQueue((prev) => [...prev, t]);
+                    showToast(`Added "${t.title}" to Queue`);
+                  }}
+                  onStartRadio={handleStartRadio}
                 />
               </div>
             </div>
@@ -1235,6 +1510,11 @@ export const App: React.FC = () => {
                     onTogglePlay={handleTogglePlay}
                     onToggleLike={handleToggleLike}
                     onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                    onAddToQueue={(t) => {
+                      setQueue((prev) => [...prev, t]);
+                      showToast(`Added "${t.title}" to Queue`);
+                    }}
+                    onStartRadio={handleStartRadio}
                   />
                 )}
               </div>
@@ -1381,6 +1661,11 @@ export const App: React.FC = () => {
                     onTogglePlay={handleTogglePlay}
                     onToggleLike={handleToggleLike}
                     onAddToPlaylist={(t) => setTrackToAddToPlaylist(t)}
+                    onAddToQueue={(t) => {
+                      setQueue((prev) => [...prev, t]);
+                      showToast(`Added "${t.title}" to Queue`);
+                    }}
+                    onStartRadio={handleStartRadio}
                   />
                 )}
               </div>
@@ -1391,12 +1676,22 @@ export const App: React.FC = () => {
         {/* Right Play Queue Drawer */}
         <QueueDrawer
           currentTrack={currentTrack}
-          queue={queue}
+          manualQueue={queue}
+          radioQueue={radioQueue}
+          isSmartRadioEnabled={isSmartRadioEnabled}
+          radioMode={radioMode}
+          isLoadingRadio={isLoadingRadio}
+          debugScores={debugScores}
           isOpen={isQueueOpen}
           onClose={() => setIsQueueOpen(false)}
           onPlayTrack={handleSelectTrack}
-          onRemoveFromQueue={(idx) => setQueue((prev) => prev.filter((_, i) => i !== idx))}
-          onClearQueue={() => setQueue([])}
+          onRemoveFromManualQueue={(idx) => setQueue((prev) => prev.filter((_, i) => i !== idx))}
+          onRemoveFromRadioQueue={(idx) => setRadioQueue((prev) => prev.filter((_, i) => i !== idx))}
+          onClearManualQueue={() => setQueue([])}
+          onToggleSmartRadio={handleToggleSmartRadio}
+          onChangeRadioMode={handleChangeRadioMode}
+          onRefreshRadio={() => currentTrack && prefetchSmartRadioQueue(currentTrack, radioMode)}
+          onStartRadio={handleStartRadio}
         />
       </div>
 
@@ -1411,6 +1706,8 @@ export const App: React.FC = () => {
         isShuffle={isShuffle}
         repeatMode={repeatMode}
         isLiked={Boolean(currentTrack && likedTrackIds.includes(currentTrack.id))}
+        isDisliked={Boolean(currentTrack && listeningProfile.dislikedTrackIds.includes(currentTrack.id))}
+        isSmartRadioActive={isSmartRadioEnabled}
         isLyricsOpen={isLyricsOpen}
         isQueueOpen={isQueueOpen}
         isFullscreen={isFullscreen}
@@ -1420,6 +1717,8 @@ export const App: React.FC = () => {
         onToggleShuffle={handleToggleShuffle}
         onToggleRepeat={handleToggleRepeat}
         onToggleLike={handleToggleLike}
+        onToggleDislike={handleToggleDislike}
+        onStartRadio={handleStartRadio}
         onSeek={handleSeek}
         onVolumeChange={handleVolumeChange}
         onToggleMute={handleToggleMute}

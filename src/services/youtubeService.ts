@@ -17,6 +17,9 @@ class YouTubePlayerBridge {
   private onTimeUpdateCallback: ((time: number, duration: number) => void) | null = null;
   private timeInterval: any = null;
 
+  // Track user's actual intention to play so we NEVER unpause/autoplay when user paused!
+  private isUserIntentionallyPlaying = false;
+
   private silentAudio: HTMLAudioElement | null = null;
 
   constructor() {
@@ -55,7 +58,7 @@ class YouTubePlayerBridge {
   private setupVisibilityHandling() {
     if (typeof document === 'undefined') return;
 
-    // 1. Prevent scripts (including YouTube iframe) from detecting when the app is backgrounded
+    // 1. Prevent background throttling of the web player
     try {
       Object.defineProperty(document, 'hidden', {
         get: () => false,
@@ -69,40 +72,98 @@ class YouTubePlayerBridge {
       // ignore
     }
 
-    // 2. Intercept and stop visibilitychange event propagation to iframe
+    // 2. When window visibility changes (e.g. minimizing, switching tabs, locking phone)
     window.addEventListener(
       'visibilitychange',
-      (e) => {
-        // If player was playing, force resume immediately
-        if (this.player && typeof this.player.playVideo === 'function') {
+      () => {
+        // ONLY resume if user explicitly had the song playing!
+        // If the user deliberately paused the song, NEVER resume it!
+        if (this.isUserIntentionallyPlaying && this.player && typeof this.player.playVideo === 'function') {
           setTimeout(() => {
             try {
-              this.player.playVideo();
+              if (this.isUserIntentionallyPlaying) {
+                this.player.playVideo();
+              }
             } catch {
               // ignore
             }
           }, 50);
+        } else if (!this.isUserIntentionallyPlaying && this.player && typeof this.player.pauseVideo === 'function') {
+          // Explicitly reinforce pause state when visibility changes while paused
+          try {
+            this.player.pauseVideo();
+          } catch {
+            // ignore
+          }
         }
       },
       true
     );
 
-    // 3. Intercept window blur (when switching apps or locking screen)
+    // 3. When window loses focus
     window.addEventListener(
       'blur',
       () => {
-        if (this.player && typeof this.player.playVideo === 'function') {
+        // Maintain continuous playback ONLY if user wants music playing
+        if (this.isUserIntentionallyPlaying && this.player && typeof this.player.playVideo === 'function') {
           setTimeout(() => {
             try {
-              this.player.playVideo();
+              if (this.isUserIntentionallyPlaying) {
+                this.player.playVideo();
+              }
             } catch {
               // ignore
             }
           }, 100);
+        } else if (!this.isUserIntentionallyPlaying && this.player && typeof this.player.pauseVideo === 'function') {
+          try {
+            this.player.pauseVideo();
+          } catch {
+            // ignore
+          }
         }
       },
       true
     );
+
+    // 4. When window gains focus (e.g. clicking back into the page or unlocking mobile device)
+    window.addEventListener(
+      'focus',
+      () => {
+        // CRITICAL FIX FOR GLITCH:
+        // If the song is paused, forcefully ensure it remains paused so returning or clicking
+        // never kicks off unwanted playback.
+        if (!this.isUserIntentionallyPlaying && this.player && typeof this.player.pauseVideo === 'function') {
+          try {
+            this.player.pauseVideo();
+          } catch {
+            // ignore
+          }
+        }
+      },
+      true
+    );
+
+    // 5. Global pointer / touch event guard:
+    // When returning from minimized state, mobile or desktop browsers can fire a click or pointer event
+    // that triggers iframe re-engagement or unwanted playback if the player was paused.
+    // If not intentionally playing, keep player paused.
+    const enforcePauseOnUserInteractivity = () => {
+      if (!this.isUserIntentionallyPlaying && this.player && typeof this.player.pauseVideo === 'function') {
+        try {
+          const state = typeof this.player.getPlayerState === 'function' ? this.player.getPlayerState() : -1;
+          // If the YouTube iframe somehow switched to playing (1) or buffering (3) without user intent:
+          if (state === 1 || state === 3) {
+            this.player.pauseVideo();
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener('pointerdown', enforcePauseOnUserInteractivity, true);
+    window.addEventListener('touchstart', enforcePauseOnUserInteractivity, true);
   }
 
   private loadIframeAPI() {
@@ -173,10 +234,21 @@ class YouTubePlayerBridge {
             this.startTimeUpdates();
           },
           onStateChange: (event: any) => {
+            // YT.PlayerState: -1 = unstarted, 0 = ended, 1 = playing, 2 = paused, 3 = buffering, 5 = cued
             if (event.data === 1) {
+              // If the iframe started playing on its own without user intention (e.g. after blur/focus/minimize/device wakeup):
+              if (!this.isUserIntentionallyPlaying) {
+                try {
+                  this.player.pauseVideo();
+                } catch {
+                  // ignore
+                }
+                return;
+              }
               this.startKeepAlive();
             } else if (event.data === 2 || event.data === 0) {
               this.stopKeepAlive();
+              // If player paused on its own or through user, don't blindly re-trigger play
             }
             if (this.onStateChangeCallback) {
               this.onStateChangeCallback(event.data);
@@ -207,6 +279,7 @@ class YouTubePlayerBridge {
   }
 
   public playVideo(videoId: string) {
+    this.isUserIntentionallyPlaying = true;
     if (!this.isReady || !this.player || typeof this.player.loadVideoById !== 'function') {
       this.queuedVideoId = videoId;
       return;
@@ -219,12 +292,16 @@ class YouTubePlayerBridge {
   }
 
   public pause() {
+    this.isUserIntentionallyPlaying = false;
+    this.stopKeepAlive();
     if (this.player && typeof this.player.pauseVideo === 'function') {
       this.player.pauseVideo();
     }
   }
 
   public resume() {
+    this.isUserIntentionallyPlaying = true;
+    this.startKeepAlive();
     if (this.player && typeof this.player.playVideo === 'function') {
       this.player.playVideo();
     }
@@ -345,4 +422,30 @@ export async function searchYouTubeMusic(query: string, apiKey?: string): Promis
   );
 
   return catalogMatches;
+}
+
+// Fetch YouTube Music Watch-Next Radio Playlist (RDAMVM)
+export async function fetchYouTubeRadio(videoId?: string, query?: string, apiKey?: string): Promise<Track[]> {
+  if (!videoId && !query) return [];
+
+  // 1. Call backend radio proxy (/api/radio) which accesses YouTube Music's RDAMVM watch-next radio playlist
+  try {
+    const params = new URLSearchParams();
+    if (videoId) params.append('videoId', videoId);
+    if (query) params.append('q', query);
+    if (apiKey) params.append('apiKey', apiKey);
+
+    const res = await fetch(`/api/radio?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.tracks && Array.isArray(data.tracks) && data.tracks.length > 0) {
+        return data.tracks;
+      }
+    }
+  } catch (err) {
+    console.warn('Backend /api/radio failed, falling back to search:', err);
+  }
+
+  // 2. Fallback to search query
+  return searchYouTubeMusic(query || `${videoId} song`, apiKey);
 }

@@ -345,12 +345,28 @@ export async function searchTracksCategorized(
     };
   }
 
+  const isExplicitLong = /mix|album|playlist|compilation|loop|hour|set|podcast/i.test(query);
+
+  // Filter out any abnormal 10+ minute / 17-minute videos if searching for a standard song
+  const filteredPrimary = primaryResults.filter((track) => {
+    if (track.duration > 600 && !isExplicitLong) return false;
+    if (
+      /1\s*hour\s*loop|10\s*hours?|you\s*will\s*ascend|extended\s*(?:loop|1\s*hour)|hour\s*version/i.test(track.title) &&
+      !isExplicitLong
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const candidatesToUse = filteredPrimary.length > 0 ? filteredPrimary : primaryResults;
+
   // Deduplicate primary results: keep the best version of each distinct song
   const deduplicatedPrimary: Track[] = [];
   const seenSongKeys = new Set<string>();
   const seenVideoIds = new Set<string>();
 
-  for (const track of primaryResults) {
+  for (const track of candidatesToUse) {
     if (seenVideoIds.has(track.youtubeVideoId)) continue;
 
     const norm = normalizeSongTitle(track.title);
@@ -369,13 +385,29 @@ export async function searchTracksCategorized(
     }
   }
 
-  const topResult = deduplicatedPrimary[0] || null;
-  const songs = deduplicatedPrimary.slice(1);
+  // Prioritize topResult: if the first item has a generic artist ("Video", "Various Artists") or is an odd duration,
+  // look for the best candidate with a verified artist name and reasonable song duration
+  let topResultIndex = 0;
+  if (deduplicatedPrimary.length > 1) {
+    const first = deduplicatedPrimary[0];
+    const isFirstGenericArtist = !first.artist || /^(video|song|single|various\s*artists)$/i.test(first.artist.trim());
+    if (isFirstGenericArtist) {
+      const betterIndex = deduplicatedPrimary.findIndex(
+        (t) => t.artist && !/^(video|song|single|various\s*artists)$/i.test(t.artist.trim()) && t.duration <= 480
+      );
+      if (betterIndex > 0) {
+        topResultIndex = betterIndex;
+      }
+    }
+  }
+
+  const topResult = deduplicatedPrimary[topResultIndex] || deduplicatedPrimary[0] || null;
+  const songs = deduplicatedPrimary.filter((_, idx) => idx !== topResultIndex);
   const moreByArtist: Track[] = [];
   const similarVibe: Track[] = [];
 
   // If top result is found, fetch real Spotify/YouTube Music-grade sections:
-  if (topResult && topResult.artist) {
+  if (topResult && topResult.artist && !/^(video|song|single|various\s*artists)$/i.test(topResult.artist.trim())) {
     const artistName = topResult.artist;
     const artistLower = artistName.toLowerCase();
 
@@ -383,6 +415,7 @@ export async function searchTracksCategorized(
     try {
       const artistTracks = await searchYouTubeMusic(`${artistName} official audio`, apiKey);
       for (const t of artistTracks) {
+        if (t.duration > 600 && !isExplicitLong) continue;
         const norm = normalizeSongTitle(t.title);
         let isDup = seenVideoIds.has(t.youtubeVideoId);
         for (const seen of seenSongKeys) {
@@ -418,6 +451,7 @@ export async function searchTracksCategorized(
     try {
       const recoTracks = await searchYouTubeMusic(recoQuery, apiKey);
       for (const t of recoTracks) {
+        if (t.duration > 600 && !isExplicitLong) continue;
         const norm = normalizeSongTitle(t.title);
         let isDup = seenVideoIds.has(t.youtubeVideoId);
         for (const seen of seenSongKeys) {
